@@ -740,8 +740,11 @@
           /[&<>"']/g,
           (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
         );
-      const fmtTime = (iso) =>
-        iso ? new Date(iso).toLocaleString(DATE_LOCALES[locale], { hour12: false }) : "";
+      const fmtTime = (iso) => {
+        if (!iso) return "";
+        const d = new Date(iso);
+        return isNaN(d.getTime()) ? "" : d.toLocaleString(DATE_LOCALES[locale], { hour12: false });
+      };
       // XSS-safe: pre-escape HTML entities so marked only sees plain text with markdown syntax.
       // No raw HTML can reach innerHTML — no need for DOMPurify.
       const md = (txt) => marked.parse(esc(txt || ""));
@@ -890,7 +893,25 @@
         const end = Math.min(state.idx + CHUNK, state.rows.length);
         const frag = document.createDocumentFragment();
         for (let i = state.idx; i < end; i++) {
-          for (const el of rowToEntries(state.rows[i])) frag.appendChild(el);
+          let els;
+          try {
+            els = rowToEntries(state.rows[i]);
+          } catch (err) {
+            // One broken record must not kill the rest of the chunk.
+            console.warn("render error at record", i, err);
+            const dump = stringifyBounded(state.rows[i]);
+            els = [
+              entry(
+                "ui",
+                "error",
+                state.rows[i]?.timestamp,
+                "⚠",
+                svcDetails("render-error", "json", dump, "language-json"),
+                truncSvc(dump),
+              ),
+            ];
+          }
+          for (const el of els) frag.appendChild(el);
         }
         chatEl.appendChild(frag);
         state.idx = end;
@@ -916,7 +937,9 @@
         if (t === "user") return userEntries(r, ts);
         if (t === "assistant") return assistantEntries(r, ts);
         if (t === "system") {
-          const sysText = strContent(r.content);
+          // Some subtypes (turn_duration, stop_hook_summary, api_error) carry no
+          // content — dump the whole record instead of rendering "undefined".
+          const sysText = strContent(r.content ?? r);
           return [
             entry(
               "system",
@@ -942,7 +965,12 @@
           ];
         }
         // file-history-snapshot / custom-title / agent-name / last-prompt / permission-mode / queue-operation
-        return [entry("ui", t, ts, "·", "")];
+        if (t) return [entry("ui", t, ts, "·", "")];
+        // typeless record: dump it instead of an "undefined" header over an empty body
+        const dump = stringifyBounded(r);
+        return [
+          entry("ui", "unknown", ts, "·", svcDetails("unknown", "json", dump, "language-json"), truncSvc(dump)),
+        ];
       }
 
       function userEntries(r, ts) {
@@ -1118,7 +1146,9 @@
             ? Object.entries(b.input)
                 .slice(0, 2)
                 .map(([k, v]) => {
-                  const s = typeof v === "string" ? v : JSON.stringify(v);
+                  // JSON.stringify(undefined) returns undefined, not a string
+                  const s =
+                    v === undefined ? "undefined" : typeof v === "string" ? v : JSON.stringify(v);
                   return `${k}=${s.length > 40 ? s.slice(0, 40) + "…" : s}`;
                 })
                 .join(" · ")
@@ -1129,7 +1159,7 @@
       }
 
       function toolResultEntry(b, ts) {
-        const raw = b.content;
+        const raw = b.content ?? ""; // tool_result may lack content entirely
         let text = "";
         if (typeof raw === "string") text = raw;
         else if (Array.isArray(raw)) text = joinBounded(raw);
@@ -1158,7 +1188,7 @@
       }
 
       function strContent(x) {
-        return typeof x === "string" ? x : stringifyBounded(x);
+        return x == null ? "" : typeof x === "string" ? x : stringifyBounded(x);
       }
 
       // Cap per-string values during serialization — avoids materializing megabytes
@@ -1176,7 +1206,8 @@
         const parts = [];
         let used = 0;
         for (const x of arr) {
-          const s = x.text || stringifyBounded(x);
+          if (x == null) continue;
+          const s = typeof x === "string" ? x : x.text || stringifyBounded(x);
           parts.push(s);
           used += s.length + 1;
           if (used > MAX_SVC * 2) break;
