@@ -16,13 +16,15 @@ Catch-up with the transcript format of Claude Code up to 2.1.310 (the viewer was
 - **Question → answer card** — an `AskUserQuestion` call and the human's answer in one card, kept in reader mode.
 - **Subagent reports** — `SubagentHandback` and reports delivered to the main session (`↩ report`, with the task name); finish notifications of background subagents show tokens · time · tool calls; synchronous `Agent` results show the same from `toolUseResult`.
 - **Compaction** — a divider with the token drop; the summary is collapsed; the `/compact` echo is hidden.
-- **Images** — base64 images (png / jpeg / gif / webp) are drawn when their block is opened, including PDF pages read by `Read`. Nothing is fetched; Copy never carries base64.
+- **Images** — base64 images (png / jpeg / gif / webp) are drawn when their block is opened, including PDF pages read by `Read` and images attached with `@path`. Nothing is fetched; Copy never carries base64.
+- **Your words in a declined tool call** ("…the user said: …") are shown as your message; an `AskUserQuestion` that timed out says so, and the selection is marked as an unsent draft.
 - **`<persisted-output>`** — results too large for the transcript show the size and the file they were saved to.
 - CI: syntax check of the inline script and unit tests on every push and before a release.
 
 ### Changed
 
 - **User records are classified** — command wrappers, local command output, `!` shell input and output, interruption markers, skill injections and system reminders are no longer shown as your messages; live text after a wrapper still is.
+- **Who wrote it** — subagent reports, messages from other sessions (`<cross-session-message>`) and the task a parent model gives a subagent or a fork are no longer signed as yours; the CLI's own origin marks are used when present.
 - **Stats line** — your messages are counted by the same rules as the feed; duplicates after `--resume` / fork are merged (first position, latest content) and their number shown; API request logs (CLI 2.1.300+, often most of the file) are skipped before parsing, with count and size.
 - **State records** (session title, agent name, permission mode), which the CLI rewrites every turn, are shown only when the value changes.
 - **Message queue** — a message typed while Claude works appears once, where it reached the conversation. Text that exists only in the queue (older CLIs) is shown as your message; text pulled back to the input box is marked as not sent.

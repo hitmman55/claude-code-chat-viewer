@@ -255,9 +255,12 @@ test("live text after a wrapper tag is a human message, never swallowed", () => 
     "<system-reminder>a</system-reminder> посмотри",
     "<local-command-stdout>Bye!</local-command-stdout> почему?",
     "<command-name>/x</command-name> а теперь вопрос",
-    "<fork-boilerplate>boilerplate</fork-boilerplate>\nYour directive: сделай задачу 3",
   ])
     assert.equal(d(user(t)), null, t);
+  // a fork's directive is visible too, but it is the parent model's (liar review)
+  const fork = d(user("<fork-boilerplate>boilerplate</fork-boilerplate>\nYour directive: сделай задачу 3"));
+  assert.equal(fork.who, "parent");
+  assert.equal(fork.prose, true);
   // machine tails stay machine
   assert.equal(d(user("<task-notification>x</task-notification>\nFull transcript available at: /tmp/x")).legacy, "task");
   assert.equal(

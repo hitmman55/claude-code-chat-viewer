@@ -1185,7 +1185,8 @@
       // no translations. DOM-free like the triage section (see test/rules.test.mjs).
       // Rule fields (value or fn(payload, record)): icon, kind, who, summary, body
       // (undefined → default text, null → none, string, or { json }), md, hide,
-      // prose (render like a chat message), sensitive (no preview), divider.
+      // prose (render like a chat message), sensitive (no preview), divider, images
+      // (image blocks drawn when the entry is opened).
 
       const hasOwn = (o, k) => k != null && Object.prototype.hasOwnProperty.call(o, k);
       const arr = (x) => (Array.isArray(x) ? x : []);
@@ -1246,6 +1247,11 @@
       }
 
       const HIDE = { hide: true };
+      // An image attached with @path: the base64 sits in content.file, not in a content block.
+      const fileImage = (a) =>
+        a?.content?.type === "image" && a.content.file && typeof a.content.file === "object"
+          ? { type: "image", source: { type: "base64", media_type: a.content.file.type, data: a.content.file.base64 } }
+          : null;
       const hookName = (a) => a.hookName ?? a.hookEvent;
       const hookSummary = (a) =>
         joinDot(hookName(a), a.exitCode != null && `exit ${a.exitCode}`, fmtDur(a.durationMs));
@@ -1353,12 +1359,20 @@
         // Typed while the agent was busy: human prompts are real user messages,
         // task notifications are machine messages (owner decision 2026-08-24).
         queued_command: {
-          icon: "⏳",
-          kind: (a) => (a.commandMode === "prompt" ? "user" : "task-note"),
-          who: (a) => (a.commandMode === "prompt" ? "user" : "task"),
-          prose: (a) => a.commandMode === "prompt",
-          summary: (a) => (a.commandMode === "prompt" ? null : taskNoteSummary(a.prompt)) ?? clip(a.prompt, 90),
-          body: (a) => (typeof a.prompt === "string" ? a.prompt : undefined),
+          icon: (a, r) => ({ human: "⏳", report: "↩", peer: "✉", task: "⏳" })[queuedFrom(a, r)],
+          kind: (a, r) => ({ human: "user", report: "assistant report", peer: "task-note", task: "task-note" })[queuedFrom(a, r)],
+          who: (a, r) =>
+            ({ human: "user", report: "subagent", peer: clip(a.origin?.name ?? "session", 40), task: "task" })[queuedFrom(a, r)],
+          prose: (a, r) => queuedFrom(a, r) === "human",
+          summary: (a, r, idx) => {
+            const from = queuedFrom(a, r);
+            if (from === "report") return reportSpec(a.prompt, idx).summary;
+            if (from === "peer")
+              return joinDot(a.origin?.name ?? a.prompt?.match?.(/from-name="([^"]*)"/)?.[1], clip(a.origin?.body ?? a.prompt, 90));
+            return (from === "task" ? taskNoteSummary(a.prompt) : null) ?? clip(a.prompt, 90);
+          },
+          body: (a, r, idx) =>
+            queuedFrom(a, r) === "report" ? reportSpec(a.prompt, idx).body : typeof a.prompt === "string" ? a.prompt : undefined,
           md: true,
         },
         hook_success: {
@@ -1402,7 +1416,8 @@
           icon: "📄",
           summary: (a) =>
             joinDot(a.displayPath ?? a.filename, a.content?.file?.numLines != null && `${a.content.file.numLines} lines`),
-          body: (a) => a.content?.file?.content,
+          body: (a) => (fileImage(a) ? imageInfo(fileImage(a)).label : a.content?.file?.content),
+          images: (a) => (fileImage(a) ? [fileImage(a)] : null),
         },
         edited_text_file: { icon: "✏️", summary: (a) => a.displayPath ?? a.filename },
         directory: { icon: "📁", summary: (a) => a.displayPath ?? a.path },
@@ -1660,6 +1675,7 @@
         // No structured answers (older CLI, or "clarify"/decline, which arrives as an
         // error): the human's words are somewhere in the result text — show all of it once.
         if (!structured) parts.push(res ? `→ ${res.isError ? "⛔ " : ""}${res.text}` : "→ —");
+        else if (res?.afk) parts.unshift("⏱ No answer in time — Claude went on alone. Below: a draft selection the user had not sent.");
         return parts.join("\n\n");
       }
 
@@ -1730,6 +1746,38 @@
             n("tool_uses") !== undefined && `${n("tool_uses")} tools`,
           ) || null
         );
+      }
+
+      // Who wrote a queued prompt: "human" | "report" (a subagent's hand-back) | "peer"
+      // (another session) | "task". CLI 2.1.28x+ says it in origin.kind; older files
+      // only by the leading tag. commandMode "prompt" alone is not enough.
+      function queuedFrom(a, r) {
+        const p = typeof a?.prompt === "string" ? a.prompt.trimStart() : "";
+        if (p.startsWith("<agent-message")) return "report";
+        if (p.startsWith("<cross-session-message") || a?.origin?.kind === "peer") return "peer";
+        if (a?.commandMode !== "prompt" || r?.isMeta === true || QUEUE_MACHINE.test(p)) return "task";
+        const k = a?.origin?.kind;
+        return k == null || k === "human" ? "human" : "task";
+      }
+
+      // The task the parent model gave a subagent (or a fork): readable like a message,
+      // but not the human's.
+      const parentTask = (body) => ({ kind: "user", who: "parent", tag: "🤖 task", summary: clip(body, 100), body, prose: true, md: true });
+
+      // A declined tool call may carry the human's instruction: "…the user said:\n<words>".
+      const DECLINED = "The user doesn't want to proceed with this tool use.";
+      const SAID = "the user said:\n";
+      function declinedWords(b) {
+        if (b?.is_error !== true) return null;
+        const t =
+          typeof b.content === "string"
+            ? b.content
+            : arr(b.content)
+                .map((x) => (typeof x?.text === "string" ? x.text : ""))
+                .join("\n");
+        if (!t.startsWith(DECLINED)) return null;
+        const i = t.indexOf(SAID);
+        return i < 0 ? null : t.slice(i + SAID.length).trim() || null;
       }
 
       // ----- user records: what the CLI writes as "user" but no human typed (phase 3') -----
@@ -1852,6 +1900,8 @@
           const name = dir ? baseName(dir.replace(/\/+$/, "")) : text.match(/^# (.+)$/m)?.[1];
           return { kind: "meta", who: "skill", tag: "⭐ skill", summary: name ? clip(name, 80) : null, body: text || null, md: true };
         }
+        // first record of a subagent transcript: the prompt the parent passed to Agent
+        if (r.isSidechain === true && !r.parentUuid && !meta) return parentTask(text);
         const t = text.trim();
         if (INTERRUPTED.has(t)) return { kind: "meta", who: "user", tag: "⛔ interrupted", summary: t, body: null };
         if (/^\/compact(\s|$)/.test(t) && idx?.compactEchoes.has(r.uuid)) return { hide: true };
@@ -1863,6 +1913,7 @@
           // A task notification's tail ("Full transcript available at …") is machine text
           // too, but the CLI always closes the tag — an unclosed one was typed by a human.
           const live = tag === "task-notification" ? tagText(t, tag) === undefined : !!afterWrappers(t);
+          if (live && tag === "fork-boilerplate") return parentTask(afterWrappers(t)); // the fork's directive
           if (live) return meta ? { legacy: "meta" } : null;
           return USER_TAG_RULES[tag](t);
         }
@@ -1892,8 +1943,21 @@
         else
           for (const b of arr(c)) {
             if (b?.type === "tool_result") {
-              if (!idx?.askCards.has(b.tool_use_id)) out.push({ type: "result", block: b });
-            } else if (b?.type === "text" && typeof b.text === "string" && b.text.trim()) text(b.text);
+              if (idx?.askCards.has(b.tool_use_id)) continue;
+              out.push({ type: "result", block: b });
+              const said = declinedWords(b);
+              if (said)
+                out.push({
+                  type: "text",
+                  text: said,
+                  spec: { kind: "user", who: "user", tag: "⛔ declined", summary: null, body: said, prose: true, md: true, human: true },
+                });
+            } else if (b?.type === "text" && typeof b.text === "string" && b.text.trim()) {
+              // the CLI's own note next to a ToolSearch result
+              if (b.text.trim() === "Tool loaded." && arr(c).some((x) => x?.type === "tool_result"))
+                out.push({ type: "text", text: b.text, spec: { legacy: "meta" } });
+              else text(b.text);
+            }
             else if (b?.type === "image") {
               // Consecutive images are one item: Read writes PDF pages as a meta record of images.
               const last = out[out.length - 1];
@@ -1906,7 +1970,9 @@
 
       const isHumanMessage = (r, idx) =>
         planUserRecord(r, idx).some(
-          (x) => (x.type === "text" && x.spec === null && x.text.trim() !== "") || (x.type === "images" && !x.meta),
+          (x) =>
+            (x.type === "text" && (x.spec === null || x.spec.human === true) && x.text.trim() !== "") ||
+            (x.type === "images" && !x.meta),
         );
 
       // Cross-record facts, one pass per file: answers of AskUserQuestion calls, task
@@ -1953,7 +2019,14 @@
                     .map((x) => (typeof x?.text === "string" ? x.text : ""))
                     .join("\n");
             const tur = r.toolUseResult && typeof r.toolUseResult === "object" ? r.toolUseResult : {};
-            ask.set(b.tool_use_id, { text, isError: b.is_error === true, answers: tur.answers, annotations: tur.annotations });
+            ask.set(b.tool_use_id, {
+              text,
+              isError: b.is_error === true,
+              answers: tur.answers,
+              annotations: tur.annotations,
+              // no answer in time: the CLI went on, answers hold what was selected, unsent
+              afk: typeof tur.afkTimeoutMs === "number" || text.startsWith("No response after"),
+            });
           }
           if (!r.uuid || parents.has(r.uuid) || !/^\/compact(\s|$)/.test(userTextOf(r).trim())) continue;
           // Look ahead over records with a uuid only: CLI 2.1.303 writes a batch of state
@@ -2024,7 +2097,8 @@
               if (typeof x.content !== "string") continue;
               const k = normText(x.content);
               if (k === key) done.add(x); // the same message moving through the queue
-              else if (x.operation === "popAll" && k.includes(key)) done.add(x);
+              // popAll joins the queued messages; match whole ones, not a piece of a word
+              else if (x.operation === "popAll" && ` ${k} `.includes(` ${key} `)) done.add(x);
               else continue;
               if (x.operation === "popAll") status = "returned";
             } else if (carrierTexts(j).includes(key)) {
@@ -2088,6 +2162,7 @@
           prose: !!(rule && v(rule.prose)) && typeof body === "string",
           sensitive: !!rule?.sensitive,
           divider: !!rule?.divider,
+          images: (rule && arr(v(rule.images))) || [],
         };
       }
       // ===== end rules =====
@@ -2235,7 +2310,7 @@
             ? `<div class="line">${summary}</div>`
             : svcDetails("rule", summary, bodyText, isJson ? "language-json" : null, s.md);
         const truncated = cut.hit || bodyText.length > MAX_SVC;
-        return entry(
+        const el = entry(
           s.kind + (s.divider ? " divider" : ""),
           s.who,
           ts,
@@ -2244,6 +2319,7 @@
           truncSvc(bodyText || s.summary || ""),
           truncated ? full : null,
         );
+        return withImages(el, arr(s.images));
       }
 
       function userEntries(r, ts) {
