@@ -2,7 +2,7 @@
 // Build a standalone single-file HTML by inlining lib/marked.min.js into index.html.
 // Output: dist/claude-code-chat-viewer-<version>.html
 //
-// Usage: node scripts/build-single.js [version]
+// Usage: node scripts/build-single.mjs [version]
 //   version — e.g. "v0.1.0" (defaults to $GITHUB_REF_NAME or "dev")
 
 import fs from "node:fs";
@@ -33,5 +33,5 @@ const bundled = html
 const outFile = path.join(outDir, `claude-code-chat-viewer-${version}.html`);
 fs.writeFileSync(outFile, bundled);
 
-const sizeKb = Math.round(bundled.length / 1024);
+const sizeKb = Math.round(Buffer.byteLength(bundled) / 1024);
 console.log(`Built ${path.relative(repoRoot, outFile)} — ${sizeKb} KB`);

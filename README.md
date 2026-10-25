@@ -16,6 +16,8 @@
 
 # Claude Code Chat Viewer
 
+Read your Claude Code conversation history in a browser. Claude Code saves every session as a JSONL file under `~/.claude/projects/`; open one here and it becomes a readable feed — your messages, Claude's replies, thinking, tool calls and results, subagent reports — with filters and a reader mode. One HTML file, no server, no install, works offline; nothing leaves your machine. Reads the transcript format up to Claude Code 2.1.310.
+
 <p align="center">
   <img src="https://img.shields.io/badge/license-Unlicense-blue" alt="License: Unlicense" />
   <img src="https://img.shields.io/badge/runtime%20deps-0-brightgreen" alt="Zero runtime dependencies" />
@@ -27,11 +29,9 @@
   <img src="screenshot.png" alt="Screenshot" width="900" />
 </p>
 
-HTML viewer for [Claude Code](https://claude.com/claude-code) session transcripts in JSONL format. Opens in a browser — no server, no build step, one vendored dependency. Works offline out of the box.
-
 ## Why
 
-Claude Code writes every session to `~/.claude/projects/<project>/<session-uuid>.jsonl` — one line per record (user message, model reply, thinking, tool_use, tool_result, attachment, etc.). The raw file is unreadable; built-in commands like `/resume` display the conversation but don't let you export or inspect it post-mortem.
+Claude Code writes every session to `~/.claude/projects/<project>/<session-uuid>.jsonl` — one line per record (user message, model reply, thinking, tool_use, tool_result, attachment, etc.). The raw file is unreadable; built-in commands like `/resume` and `/export` reopen or dump a conversation, but don't let you inspect an old transcript with its tool calls and service records.
 
 This viewer turns such a `.jsonl` into a readable feed with color-coded roles, collapsible service blocks (thinking / tools / results), and filters.
 
@@ -70,7 +70,7 @@ Claude Code transcripts live at:
 ~/.claude/projects/<project-slug>/<session-uuid>.jsonl
 ```
 
-where `<project-slug>` is your working directory with `/` replaced by `-`. Example: `/home/user/myproj` → `-home-user-myproj`.
+where `<project-slug>` is your working directory with every character other than a letter or digit replaced by `-`. Example: `/home/user/my_proj` → `-home-user-my-proj`.
 
 ## Features
 
@@ -78,11 +78,11 @@ where `<project-slug>` is your working directory with `/` replaced by `-`. Examp
 
 - **File picker** — click "Choose file" and pick a `.jsonl`.
 - **Drag and drop** — drop a file anywhere on the page. A dashed outline signals the drop zone. Folder drops and non-file drags are rejected cleanly.
-- **Try with example** — on the empty state (when hosted online) there's a button that loads a bundled `demo.jsonl` showcasing all entry types.
+- **Try with example** — on the empty state (when hosted online) there's a button that loads a bundled `demo.jsonl` showcasing the main entry types.
 
 ### Reading comfort
 
-- **Reader mode** — a header toggle that hides everything except real user messages and assistant text replies. No thinking, no tool calls, no service records. Good for skimming or sharing a clean view.
+- **Reader mode** — a header toggle that keeps only what people and Claude said: your messages (including `/compact` with its arguments), Claude's text replies, question → answer cards, subagent reports and compaction dividers. No thinking, no tool calls, no service records. Good for skimming or sharing a clean view.
 - **Copy per message** — `📋` button in each entry header. Copies the entry's text to the clipboard, with a checkmark confirmation for 1.2 s. Uses `navigator.clipboard.writeText` with a `document.execCommand` fallback for `file://` contexts.
 - **Honest stats line** — human messages and model replies are counted by the same rules as the feed (tool output, command wrappers and notifications are not your messages); duplicates after `--resume` are merged; API request logs are skipped (CLI 2.1.300+). `? N new record types` flags record types this version doesn't know yet — hover for the list; those records are still shown, as JSON.
 - **Friendly tool names** — known tools are labelled with icons (e.g. `📖 Read file`, `🖥️ Shell`, `📝 Edit file`). Unknown / MCP tools fall back to `🔧 {raw_name}`.
@@ -94,19 +94,19 @@ where `<project-slug>` is your working directory with `/` replaced by `-`. Examp
 - **Streaming parse** — `.jsonl` is read via `file.stream()` + `TextDecoderStream`, not loaded as a single string.
 - **Native virtualization** — `content-visibility: auto` on each record: the browser skips layout and paint for off-screen entries. Scales to thousands of records.
 - **Chunked rendering** — 500 records per chunk, "Load more" button for the rest.
-- **Filters** — six checkboxes (thinking / tools / results / system / hooks / ui-state), toggle categories via a single CSS class on the container (no DOM reflow).
+- **Filters** — six checkboxes (thinking / tools / results / system / hooks / ui-state), toggle categories via a single CSS class on the container (no re-render).
 - **XSS-safe rendering** — every text block is HTML-escaped _before_ markdown parsing. No raw HTML from the transcript ever reaches the DOM, so no DOM sanitizer is needed at runtime. Markdown images are neutralized (shown as inert text, never fetched). Links are restricted to `http(s)` and opened with `rel="noopener noreferrer nofollow"`.
-- **Size caps** — prose blocks truncated at 20 KB, service blocks at 5 KB. Copy and clipboard operations inherit these caps — the page never ships megabytes of text and cannot stall the browser.
-- **⤢ Open in full** — an entry cut for display gets a `⤢` button: the whole text opens in a panel over the feed (plain text / markdown / raw JSON of the record), with "copy all" and "save to file". The feed itself never changes height.
+- **Size caps** — prose blocks truncated at 20 000 characters, service blocks at 5 000. The `📋` button copies what is shown, within these caps, so a click never ships megabytes of text; the full text is reached only on demand, through `⤢`.
+- **⤢ Open in full** — an entry cut for display gets a `⤢` button: the whole text opens in a panel over the feed (plain text / markdown / raw JSON of the record), with "Copy all" and "Save file". The feed itself never changes height.
 - **`.json` fallback** — if the file isn't JSONL but a plain JSON array/object, it's parsed as a list of records.
 
 ## Browser requirements
 
 - Chrome / Edge 85+
-- Safari 18+
-- Firefox 125+
+- Firefox 105+
+- Safari 15.4+
 
-All required for `content-visibility: auto`. On older browsers the viewer works but scrolling large files will be noticeably slower.
+`content-visibility: auto` (Firefox 125+, Safari 18+) only speeds up scrolling of large files; without it everything works, just slower.
 
 ## Dependencies
 
@@ -122,9 +122,9 @@ A transcript holds much more than the conversation. Before you share a `.jsonl` 
 
 - every message, thinking block and tool output, including file contents and command output, which may contain keys, tokens or passwords;
 - absolute paths, your user name, the working directory and the git branch, repeated on every record;
-- your account email, the full system prompt and the text of your `CLAUDE.md` files — the viewer collapses these records and shows only their size;
+- your account email, the full system prompt and the text of your `CLAUDE.md` files — these records are hidden by default (system / ui-state filters), their one-line summary shows only counts, and opening one shows its content;
 - images: screenshots and pages of PDF files read during the session;
-- full API request logs (`api-request*` lines, CLI 2.1.300+; often most of the file) — the viewer skips them, but they are in the file.
+- full API request logs (`api-request*` lines, CLI 2.1.300+; up to half the file) — the viewer skips them, but they are in the file.
 
 Outputs too large for the transcript are not in it: Claude Code keeps them in `<session>/tool-results/` next to the file, and the viewer shows only a ~2 KB preview with the path.
 
@@ -135,7 +135,7 @@ Everything runs locally in your browser. The viewer itself makes **no automatic 
 ## Known limits
 
 - Files over ~100 MB need indexed line-offset loading with window-based rendering (not implemented).
-- No Markdown/HTML export (the goal is viewing, not conversion).
+- No export of a whole session (the goal is viewing, not conversion); a single entry can be saved through `⤢` → Save file.
 - No syntax highlighting in code blocks (intentional — kept dependencies minimal).
 - A message you edited and resent appears twice — conversation branches are not drawn as a tree yet.
 - Badges of service records show the raw record type (e.g. `hook_success`), untranslated — that way new record types need no translation.
@@ -151,7 +151,7 @@ node scripts/check-syntax.mjs  # syntax of the inline script
 node --test test/*.test.mjs    # unit tests
 ```
 
-The DOM-free parts — record triage and the rule tables that decide how each record type is shown — sit between the `// ===== triage =====` and `// ===== rules =====` markers; the tests cut them out of `index.html` and run them under Node. Supporting a new record type is usually one entry in a rule table.
+The DOM-free parts — record triage and the rule tables that decide how each record type is shown — sit in the `triage` and `rules` sections of the script, each between `// ===== <name> =====` and `// ===== end <name> =====`; the tests cut them out of `index.html` and run them under Node. Supporting a new record type is usually one entry in a rule table.
 
 ## License
 

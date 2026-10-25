@@ -26,51 +26,12 @@ jobs:
       - name: Build single-file HTML
         run: node scripts/build-single.mjs "$GITHUB_REF_NAME"
 
+      - name: Release notes from CHANGELOG
+        run: node scripts/release-notes.mjs "$GITHUB_REF_NAME" > dist/notes.md
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: dist/claude-code-chat-viewer-*.html
+          body_path: dist/notes.md
           generate_release_notes: true
-          body: |
-            ## 📥 Download
-
-            Grab **`claude-code-chat-viewer-${{ github.ref_name }}.html`** from the assets below. One file. Double-click to open in any modern browser. No install, no build step, no server, no CDN — works offline from the first open.
-
-            ## What's inside
-
-            One bundled dependency:
-
-            - [marked](https://github.com/markedjs/marked) v12 — markdown → HTML (~35 KB)
-
-            That's it. Everything else is vanilla HTML / CSS / JS. Total file weight: ~140 KB.
-
-            ## Features
-
-            - 🖱️ **Drag & drop** any `.jsonl` file onto the page
-            - 📖 **Reader mode** — hide tool noise, keep only user + assistant messages
-            - 📋 **Copy per message** button in each entry
-            - 🔧 **Friendly tool names** — `📝 Edit file`, `🖥️ Shell`, `📖 Read file`…
-            - ❓ **Questions with answers, subagent reports, hooks, compaction dividers, images** — shown for what they are, not as raw records
-            - ⤢ **Open in full** — entries cut for display open whole in a panel (text / markdown / raw JSON)
-            - 🧾 **Honest stats** — your messages counted by the feed's own rules, `--resume` duplicates merged, API request logs skipped, `? N new record types` when the format moves on
-            - 🎨 **Auto light/dark theme** from your OS, with manual override
-            - 🌐 **Six UI languages** — English, Русский, Español, Français, 中文, العربية (RTL for Arabic)
-            - 🔒 **Zero network requests** — Markdown images neutralized, external links sandboxed
-            - ⚡ **Virtualized rendering** — handles transcripts with 10 000+ records
-            - 🎁 **Try-with-example** button right in the empty state if you don't have a JSONL handy
-
-            ## Privacy
-
-            The viewer makes zero automatic network requests. Your transcripts stay on your machine. Markdown images in transcripts are shown as inert text (never fetched). External links use `rel="noopener noreferrer nofollow"` and open only on click.
-
-            ## Where to find your transcripts
-
-            ```
-            ~/.claude/projects/<project-slug>/<session-uuid>.jsonl
-            ```
-
-            where `<project-slug>` is your working directory with `/` replaced by `-`.
-
-            Full docs: [README](https://github.com/hitmman55/claude-code-chat-viewer#claude-code-chat-viewer) · Live demo: <https://hitmman55.github.io/claude-code-chat-viewer/>
-
-            ---

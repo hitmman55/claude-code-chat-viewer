@@ -6,16 +6,16 @@
     <title>Claude Code Chat Viewer</title>
     <meta
       name="description"
-      content="Offline HTML viewer for Claude Code JSONL session transcripts. Six UI languages, light/dark theme, no backend, no CDN."
+      content="Browse Claude Code conversation history offline: one HTML file that reads JSONL session transcripts from ~/.claude/projects. Six UI languages, no server, no install."
     />
     <meta
       name="keywords"
-      content="claude code, claude, anthropic, jsonl, transcript viewer, chat log, log viewer, single file html"
+      content="claude code, claude code history, conversation history, session transcript, jsonl viewer, transcript viewer, anthropic, offline, single file html"
     />
     <meta property="og:title" content="Claude Code Chat Viewer" />
     <meta
       property="og:description"
-      content="Offline HTML viewer for Claude Code JSONL session transcripts."
+      content="Browse Claude Code conversation history offline: one HTML file that reads JSONL session transcripts from ~/.claude/projects."
     />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary" />
@@ -682,7 +682,7 @@
           copyAll: "Скопировать всё",
           saveFile: "Сохранить файл",
           close: "Закрыть",
-          mdTooBig: "Слишком большой для markdown — откройте «Текст»",
+          mdTooBig: "Слишком большой для markdown — открой «Текст»",
           newTypes: (n) => `? новых типов записей: ${n}`,
           persisted: (size, name) => `💾 ${size} сохранено вне стенограммы: ${name}`,
           images: (n) => `картинок: ${n}`,
@@ -710,7 +710,7 @@
           records: "registros",
           service: (n) => `${n} de servicio`,
           dups: (n) => `duplicados eliminados: ${n}`,
-          apiLog: (n, mb) => `registro de API oculto: ${n} sol., ${mb} MB`,
+          apiLog: (n, mb) => `registro de API oculto: ${n} pet., ${mb} MB`,
           loadMore: (n, l) => `Mostrar ${n} más (${l} restantes)`,
           loading: "Cargando…",
           cut: (n) => `cortados ${n} car.`,
@@ -727,7 +727,7 @@
           close: "Cerrar",
           mdTooBig: "Demasiado grande para markdown — usa Texto",
           newTypes: (n) => `? ${n} tipos de registro nuevos`,
-          persisted: (size, name) => `💾 ${size} guardado fuera de la transcripción: ${name}`,
+          persisted: (size, name) => `💾 ${size} guardados fuera de la transcripción: ${name}`,
           images: (n) => `${n} ${n === 1 ? "imagen" : "imágenes"}`,
           copy: "Copiar",
           copied: "¡Copiado!",
@@ -771,7 +771,7 @@
           close: "Fermer",
           mdTooBig: "Trop volumineux pour le markdown — utilise Texte",
           newTypes: (n) => `? ${n} nouveaux types d'enregistrement`,
-          persisted: (size, name) => `💾 ${size} enregistré hors de la transcription : ${name}`,
+          persisted: (size, name) => `💾 ${size} stockés hors de la transcription : ${name}`,
           images: (n) => `${n} image${n === 1 ? "" : "s"}`,
           copy: "Copier",
           copied: "Copié !",
@@ -796,8 +796,8 @@
           emptyFile: "文件为空或不是 JSONL。",
           records: "条记录",
           service: (n) => `服务 ${n} 条`,
-          dups: (n) => `已去除重复:${n}`,
-          apiLog: (n, mb) => `已隐藏 API 日志:${n} 个请求,${mb} MB`,
+          dups: (n) => `已去除重复：${n}`,
+          apiLog: (n, mb) => `已隐藏 API 日志：${n} 个请求，${mb} MB`,
           loadMore: (n, l) => `加载更多 ${n} 条(剩余 ${l})`,
           loading: "加载中…",
           cut: (n) => `截断 ${n} 字`,
@@ -805,7 +805,7 @@
           chars: (n) => `${n} 字`,
           systemInject: "系统注入",
           readerMode: "阅读模式",
-          openFull: "完整打开",
+          openFull: "查看全文",
           modeText: "文本",
           modeMd: "Markdown",
           modeJson: "记录 JSON",
@@ -814,7 +814,7 @@
           close: "关闭",
           mdTooBig: "内容过大，无法以 Markdown 显示 — 请用文本",
           newTypes: (n) => `? ${n} 种新记录类型`,
-          persisted: (size, name) => `💾 ${size} 已保存在记录之外：${name}`,
+          persisted: (size, name) => `💾 ${size} 已保存在会话记录之外：${name}`,
           images: (n) => `${n} 张图片`,
           copy: "复制",
           copied: "已复制!",
@@ -839,7 +839,7 @@
           emptyFile: "ملف فارغ أو ليس JSONL.",
           records: "سجلات",
           service: (n) => `${n} خدمية`,
-          dups: (n) => `مكررات محذوفة: ${n}`,
+          dups: (n) => `تكرارات محذوفة: ${n}`,
           apiLog: (n, mb) => `سجل API مخفي: ${n} طلبًا، ${mb} ميغابايت`,
           loadMore: (n, l) => `عرض ${n} أكثر (${l} متبقٍ)`,
           loading: "جارٍ التحميل…",
@@ -856,9 +856,9 @@
           saveFile: "حفظ الملف",
           close: "إغلاق",
           mdTooBig: "أكبر من أن يُعرض بـ Markdown — استخدم النص",
-          newTypes: (n) => `? ${n} أنواع سجلات جديدة`,
+          newTypes: (n) => `? أنواع سجلات جديدة: ${n}`,
           persisted: (size, name) => `💾 ${size} محفوظ خارج السجل: ${name}`,
-          images: (n) => `${n} صور`,
+          images: (n) => `صور: ${n}`,
           copy: "نسخ",
           copied: "تم النسخ!",
           tryExample: "جرّب مثالاً",
@@ -1011,16 +1011,24 @@
       };
 
       // ===== file loading =====
-      async function loadFile(f) {
-        // Clear stale stats from a previous file — on error the old stats row
-        // would otherwise stay above the new error message and mislead the user.
+      // The feed shows a message instead of a file: forget the file too. Stale stats
+      // would mislead, and a language switch (it re-renders state) would bring the
+      // old file back over the message.
+      function showNotice(html) {
+        if (panel.open) panel.close();
+        state = { rows: [], idx: 0, fname: "", tri: null, index: null };
         statsEl.textContent = "";
-        chatEl.innerHTML = `<div class="empty">${L().reading}</div>`;
+        statsEl.title = "";
+        chatEl.innerHTML = `<div class="empty">${html}</div>`;
+      }
+
+      async function loadFile(f) {
+        showNotice(L().reading);
         try {
           const tri = await parseFile(f);
           render(tri.rows, f.name, tri);
         } catch (err) {
-          chatEl.innerHTML = `<div class="empty">${L().errRead} ${esc(err.message)}</div>`;
+          showNotice(`${L().errRead} ${esc(err.message)}`);
         }
       }
 
@@ -1067,7 +1075,7 @@
         const items = Array.from(e.dataTransfer.items || []);
         const hasFolder = items.some((it) => it.webkitGetAsEntry?.()?.isDirectory);
         if (hasFolder) {
-          chatEl.innerHTML = `<div class="empty">${L().dropFolderHint}</div>`;
+          showNotice(L().dropFolderHint);
           return;
         }
 
@@ -1438,6 +1446,7 @@
         },
         nested_memory: {
           icon: "🧠",
+          sensitive: true, // the text of a CLAUDE.md
           summary: (a) => a.displayPath ?? a.path,
           body: (a) => a.content?.content,
           md: true,
@@ -2768,8 +2777,7 @@
       const canLoadDemo = /^https?:$/.test(window.location.protocol);
 
       async function loadDemo() {
-        statsEl.textContent = "";
-        chatEl.innerHTML = `<div class="empty">${L().reading}</div>`;
+        showNotice(L().reading);
         try {
           const res = await fetch("demo.jsonl");
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -2778,7 +2786,7 @@
           for (const ln of text.split("\n")) triageLine(tri, ln);
           render(tri.rows, "demo.jsonl", tri);
         } catch (err) {
-          chatEl.innerHTML = `<div class="empty">${L().errRead} ${esc(err.message)}</div>`;
+          showNotice(`${L().errRead} ${esc(err.message)}`);
         }
       }
 
