@@ -1133,6 +1133,12 @@
           if (t !== "user" && t !== "assistant" && r && typeof r === "object") {
             const k = missingRuleKey(r);
             if (k) newTypes.add(k);
+            // Queued prompts are chat messages too — counted by the same rule the feed uses.
+            let s = null;
+            try {
+              s = describeRecord(r, idx);
+            } catch {} // the feed shows such a record as an error card, not a message
+            if (s && !s.hide && s.kind === "user" && s.prose) nUser++;
           }
         }
         return {
@@ -1512,14 +1518,30 @@
         "atis-latch": HIDE,
         "last-prompt": HIDE,
         "agent-setting": HIDE,
-        "custom-title": { icon: "🏷", summary: (r) => r.customTitle, body: null },
-        "ai-title": { icon: "🏷", summary: (r) => r.aiTitle, body: null },
-        "agent-name": { icon: "🏷", summary: (r) => r.agentName, body: null },
-        "permission-mode": { icon: "🔐", summary: (r) => r.permissionMode, body: null },
+        // track: the CLI rewrites these on every turn — only a change is shown (index.statePrev).
+        "custom-title": { icon: "🏷", track: (r) => r.customTitle, summary: (r) => r.customTitle, body: null },
+        "ai-title": { icon: "🏷", track: (r) => r.aiTitle, summary: (r) => r.aiTitle, body: null },
+        "agent-name": { icon: "🏷", track: (r) => r.agentName, summary: (r) => r.agentName, body: null },
+        "permission-mode": {
+          icon: "🔐",
+          kind: "system",
+          track: (r) => r.permissionMode,
+          summary: (r) => r.permissionMode,
+          body: null,
+        },
+        // A message typed while Claude works. Shown once, and only when no later record
+        // carries the same text (index.queueShown): "sent" — the queue is its only trace
+        // (older CLIs), "returned" — pulled back to the input box (popAll).
         "queue-operation": {
-          icon: "⏳",
-          summary: (r) => joinDot(r.operation, clip(r.content, 80)),
+          hide: (r, _, idx) => !!idx && !idx.queueShown.has(r),
+          icon: (r, _, idx) => (idx?.queueShown.get(r) === "returned" ? "↩" : "⏳"),
+          kind: (r, _, idx) => (idx?.queueShown.get(r) === "sent" ? "user" : "ui"),
+          who: (r, _, idx) => (idx?.queueShown.get(r) === "sent" ? "user" : "queue"),
+          prose: (r, _, idx) => idx?.queueShown.get(r) === "sent",
+          summary: (r, _, idx) =>
+            joinDot(idx?.queueShown.get(r) === "returned" ? "returned to input, not sent" : r.operation, clip(r.content, 80)),
           body: (r) => (typeof r.content === "string" ? r.content : null),
+          md: true,
         },
         "file-history-snapshot": {
           icon: "💾",
@@ -1786,9 +1808,21 @@
         const ask = new Map();
         const agentDesc = new Map();
         const compactEchoes = new Set();
+        const stateSame = new Set();
+        const statePrev = new Map();
+        const lastState = new Map();
         for (const r of rows) {
           if (!r || typeof r !== "object") continue;
           if (r.parentUuid) parents.add(r.parentUuid);
+          const track = typeof r.type === "string" && hasOwn(RECORD_RULES, r.type) ? RECORD_RULES[r.type].track : null;
+          if (track) {
+            const val = String(track(r) ?? "");
+            if (lastState.has(r.type)) {
+              if (lastState.get(r.type) === val) stateSame.add(r);
+              else statePrev.set(r, lastState.get(r.type));
+            }
+            lastState.set(r.type, val);
+          }
           if (r.type === "assistant")
             for (const b of arr(r.message?.content))
               if (b?.type === "tool_use" && b.name === "AskUserQuestion" && b.id && askBody(b.input, null))
@@ -1832,7 +1866,65 @@
             }
           }
         }
-        return { parents, askCards, ask, agentDesc, compactEchoes };
+        const queueShown = queueStatus(rows);
+        return { parents, askCards, ask, agentDesc, compactEchoes, stateSame, statePrev, queueShown };
+      }
+
+      // Queue records → "sent" | "returned" for the one record of each queued message
+      // that has to be shown. Corpus (2 851 files): a remove is the CLI taking the message
+      // out for delivery — the same text arrives as queued_command in under 0.5 s, so the
+      // queue copy is hidden; machine notifications always arrive as their own records.
+      const QUEUE_MACHINE = /^<(task-notification|agent-message|cross-session-message)[\s>]/;
+      const QUEUE_LOOKAHEAD = 200;
+      const normText = (s) => s.replace(/\s+/g, " ").trim();
+      function queueStatus(rows) {
+        const shown = new Map();
+        const done = new Set();
+        const carried = new Map(); // row index → normalized texts that row delivers
+        const carrierTexts = (j) => {
+          if (carried.has(j)) return carried.get(j);
+          const x = rows[j];
+          let ts = [];
+          if (x?.type === "user") {
+            const c = x.message?.content;
+            ts = typeof c === "string" ? [c] : arr(c).filter((b) => b?.type === "text").map((b) => b.text);
+          } else if (x?.type === "attachment" && x.attachment?.type === "queued_command") ts = [x.attachment.prompt];
+          else if (x?.type === "system" && x.subtype === "local_command") ts = [x.content];
+          // Queued "! cmd" and "/command args" arrive in their wrapper tags.
+          for (const t of [...ts]) {
+            if (typeof t !== "string") continue;
+            const bash = tagText(t, "bash-input");
+            if (bash !== undefined) ts.push(bash);
+            const cmd = tagText(t, "command-name");
+            if (cmd !== undefined) ts.push(`${cmd} ${tagText(t, "command-args") ?? ""}`);
+          }
+          const out = ts.filter((t) => typeof t === "string").map(normText);
+          carried.set(j, out);
+          return out;
+        };
+        for (let i = 0; i < rows.length; i++) {
+          const r = rows[i];
+          if (r?.type !== "queue-operation" || typeof r.content !== "string" || done.has(r)) continue;
+          const key = normText(r.content);
+          if (!key || QUEUE_MACHINE.test(key)) continue;
+          let status = r.operation === "popAll" ? "returned" : "sent";
+          for (let j = i + 1; j < rows.length && j <= i + QUEUE_LOOKAHEAD; j++) {
+            const x = rows[j];
+            if (x?.type === "queue-operation") {
+              if (typeof x.content !== "string") continue;
+              const k = normText(x.content);
+              if (k === key) done.add(x); // the same message moving through the queue
+              else if (x.operation === "popAll" && k.includes(key)) done.add(x);
+              else continue;
+              if (x.operation === "popAll") status = "returned";
+            } else if (carrierTexts(j).includes(key)) {
+              status = null; // delivered: that record shows it
+              break;
+            }
+          }
+          if (status) shown.set(r, status);
+        }
+        return shown;
       }
 
       function ruleTable(r) {
@@ -1852,11 +1944,12 @@
         return r.type === "system" || r.type === "attachment" ? `${r.type}:${sub}` : sub;
       }
 
-      function describeRecord(r) {
+      function describeRecord(r, idx = null) {
         const [table, sub, payload, defaultWho] = ruleTable(r);
         const rule = typeof sub === "string" && hasOwn(table, sub) ? table[sub] : null;
-        const v = (f) => (typeof f === "function" ? f(payload, r) : f);
+        const v = (f) => (typeof f === "function" ? f(payload, r, idx) : f);
         if (rule && v(rule.hide)) return { hide: true };
+        if (rule?.track && idx?.stateSame.has(r)) return { hide: true };
         let body = rule ? v(rule.body) : undefined;
         let level = rule ? "known" : "recognized";
         if (body === undefined) {
@@ -1870,7 +1963,8 @@
         if (body === "") body = null;
         else if (body != null && typeof body !== "string" && !(typeof body === "object" && "json" in body))
           body = { json: body };
-        const summary = rule ? v(rule.summary) : null;
+        let summary = rule ? v(rule.summary) : null;
+        if (rule?.track && idx?.statePrev.has(r)) summary = `${clip(idx.statePrev.get(r)) || "—"} → ${summary ?? "—"}`;
         const icon = rule ? v(rule.icon) : null;
         const name = typeof sub === "string" ? sub : r?.type === "system" ? "system" : "?";
         return {
@@ -2006,7 +2100,7 @@
         if (t === "assistant") return assistantEntries(r, ts);
         // Everything else (system, attachment, state records, unknown) goes through
         // the rule tables.
-        const spec = describeRecord(r);
+        const spec = describeRecord(r, state.index);
         return spec.hide ? [] : [specEntry(spec, ts)];
       }
 
