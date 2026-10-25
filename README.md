@@ -43,7 +43,12 @@ This viewer turns such a `.jsonl` into a readable feed with color-coded roles, c
 - **tool_use** (amber) — tool invocations with argument preview
 - **tool_result** (cyan / red for errors) — tool responses
 - **meta / task-note** (yellow) — system injections and `<task-notification>` from subagents
-- **system / attachment / ui-state** — service records (hidden by default)
+- **question → answer** — an `AskUserQuestion` call and the human's answer in one card
+- **subagent report** (`↩ report`) — a subagent's final report, labelled with its task; when a background subagent finishes you see tokens · time · tool calls
+- **hooks** — hook runs and hook errors (own filter, off by default)
+- **compaction** — a divider with the token drop; the compaction summary is collapsed
+- **images** — screenshots and PDF pages stored in the transcript, drawn when you open their block
+- **system / attachment / ui-state** — service records (hidden by default); a value the CLI rewrites every turn (session title, permission mode) is shown only when it changes
 
 Each block is a separate row with a colored left bar. No messenger bubbles: this is a log, not a chat.
 
@@ -79,6 +84,7 @@ where `<project-slug>` is your working directory with `/` replaced by `-`. Examp
 
 - **Reader mode** — a header toggle that hides everything except real user messages and assistant text replies. No thinking, no tool calls, no service records. Good for skimming or sharing a clean view.
 - **Copy per message** — `📋` button in each entry header. Copies the entry's text to the clipboard, with a checkmark confirmation for 1.2 s. Uses `navigator.clipboard.writeText` with a `document.execCommand` fallback for `file://` contexts.
+- **Honest stats line** — human messages and model replies are counted by the same rules as the feed (tool output, command wrappers and notifications are not your messages); duplicates after `--resume` are merged; API request logs are skipped (CLI 2.1.300+). `? N new record types` flags record types this version doesn't know yet — hover for the list; those records are still shown, as JSON.
 - **Friendly tool names** — known tools are labelled with icons (e.g. `📖 Read file`, `🖥️ Shell`, `📝 Edit file`). Unknown / MCP tools fall back to `🔧 {raw_name}`.
 - **Auto theme** — the viewer follows your system's `prefers-color-scheme` by default. Click the sun/moon button to pin a choice; pinned choice persists across sessions.
 - **Six UI languages** — English, Русский, Español, Français, 中文, العربية. Arabic switches to RTL. Picker in the header, preference saved.
@@ -88,9 +94,10 @@ where `<project-slug>` is your working directory with `/` replaced by `-`. Examp
 - **Streaming parse** — `.jsonl` is read via `file.stream()` + `TextDecoderStream`, not loaded as a single string.
 - **Native virtualization** — `content-visibility: auto` on each record: the browser skips layout and paint for off-screen entries. Scales to thousands of records.
 - **Chunked rendering** — 500 records per chunk, "Load more" button for the rest.
-- **Filters** — five checkboxes (thinking / tools / results / system / ui-state), toggle categories via a single CSS class on the container (no DOM reflow).
+- **Filters** — six checkboxes (thinking / tools / results / system / hooks / ui-state), toggle categories via a single CSS class on the container (no DOM reflow).
 - **XSS-safe rendering** — every text block is HTML-escaped _before_ markdown parsing. No raw HTML from the transcript ever reaches the DOM, so no DOM sanitizer is needed at runtime. Markdown images are neutralized (shown as inert text, never fetched). Links are restricted to `http(s)` and opened with `rel="noopener noreferrer nofollow"`.
 - **Size caps** — prose blocks truncated at 20 KB, service blocks at 5 KB. Copy and clipboard operations inherit these caps — the page never ships megabytes of text and cannot stall the browser.
+- **⤢ Open in full** — an entry cut for display gets a `⤢` button: the whole text opens in a panel over the feed (plain text / markdown / raw JSON of the record), with "copy all" and "save to file". The feed itself never changes height.
 - **`.json` fallback** — if the file isn't JSONL but a plain JSON array/object, it's parsed as a list of records.
 
 ## Browser requirements
@@ -109,25 +116,42 @@ Only one, vendored locally in `lib/`:
 
 No CDN, no network, no Subresource Integrity dance. Clone and run.
 
+## What's personal in a transcript
+
+A transcript holds much more than the conversation. Before you share a `.jsonl` file — or a screenshot of the viewer — know what's in it:
+
+- every message, thinking block and tool output, including file contents and command output, which may contain keys, tokens or passwords;
+- absolute paths, your user name, the working directory and the git branch, repeated on every record;
+- your account email, the full system prompt and the text of your `CLAUDE.md` files — the viewer collapses these records and shows only their size;
+- images: screenshots and pages of PDF files read during the session;
+- full API request logs (`api-request*` lines, CLI 2.1.300+; often most of the file) — the viewer skips them, but they are in the file.
+
+Outputs too large for the transcript are not in it: Claude Code keeps them in `<session>/tool-results/` next to the file, and the viewer shows only a ~2 KB preview with the path.
+
 ## Privacy
 
-Everything runs locally in your browser. The viewer itself makes **no automatic network requests** — no CDN, no analytics, no remote fonts. Markdown images embedded in transcripts are neutralized: shown as inert text with their URL visible, but never fetched. External links (`http(s)` only) open in a new tab only when you click them, with `rel="noopener noreferrer nofollow"`. Your transcripts stay on your machine.
+Everything runs locally in your browser. The viewer itself makes **no automatic network requests** — no CDN, no analytics, no remote fonts. Markdown images embedded in transcripts are neutralized: shown as inert text with their URL visible, but never fetched. External links (`http(s)` only) open in a new tab only when you click them, with `rel="noopener noreferrer nofollow"`. Your transcripts stay on your machine. Images stored inside a transcript (base64) are drawn from the file itself, still with no network request.
 
 ## Known limits
 
 - Files over ~100 MB need indexed line-offset loading with window-based rendering (not implemented).
 - No Markdown/HTML export (the goal is viewing, not conversion).
 - No syntax highlighting in code blocks (intentional — kept dependencies minimal).
+- A message you edited and resent appears twice — conversation branches are not drawn as a tree yet.
+- Badges of service records show the raw record type (e.g. `hook_success`), untranslated — that way new record types need no translation.
 
 ## Development
 
 All code lives in one HTML file. Edit it directly — styles in `<style>`, logic in `<script>`, translations in the `I18N` object near the top of the script.
 
-Check JS syntax without a browser:
+Check syntax and run the tests without a browser (nothing to install):
 
 ```bash
-sed -n '/^<script>$/,/^<\/script>$/p' index.html | sed '1d;$d' | node --check /dev/stdin
+node scripts/check-syntax.mjs  # syntax of the inline script
+node --test test/*.test.mjs    # unit tests
 ```
+
+The DOM-free parts — record triage and the rule tables that decide how each record type is shown — sit between the `// ===== triage =====` and `// ===== rules =====` markers; the tests cut them out of `index.html` and run them under Node. Supporting a new record type is usually one entry in a rule table.
 
 ## License
 

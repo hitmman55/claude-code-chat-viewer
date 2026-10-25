@@ -43,7 +43,12 @@ Este visor convierte ese `.jsonl` en un feed legible con colores por rol, bloque
 - **tool_use** (ámbar) — llamadas a herramientas con vista previa de argumentos
 - **tool_result** (cian / rojo para errores) — respuestas de herramientas
 - **meta / task-note** (amarillo) — inyecciones del sistema y `<task-notification>` de subagentes
-- **system / attachment / ui-state** — registros de servicio (ocultos por defecto)
+- **pregunta → respuesta** — una llamada a `AskUserQuestion` y la respuesta de la persona en una sola tarjeta
+- **informe del subagente** (`↩ report`) — el informe final de un subagente, con el nombre de su tarea; cuando termina un subagente en segundo plano se ven tokens · tiempo · llamadas a herramientas
+- **hooks** — ejecuciones y errores de hooks (filtro propio, desactivado por defecto)
+- **compactación** — un separador con la caída de tokens; el resumen de la compactación aparece plegado
+- **imágenes** — capturas y páginas de PDF guardadas en la transcripción; se dibujan al abrir su bloque
+- **system / attachment / ui-state** — registros de servicio (ocultos por defecto); los valores que la CLI reescribe en cada turno (título de la sesión, modo de permisos) solo se muestran cuando cambian
 
 Cada bloque es una fila independiente con una barra coloreada a la izquierda. Sin burbujas de mensajería: esto es un log, no un chat.
 
@@ -79,6 +84,7 @@ donde `<project-slug>` es tu directorio de trabajo con `/` reemplazado por `-`. 
 
 - **Modo lectura** — botón en la cabecera que oculta todo excepto los mensajes reales del usuario y el texto del asistente. Sin thinking, sin llamadas a herramientas, sin registros de servicio.
 - **Copiar por mensaje** — botón `📋` en la cabecera de cada entrada. Copia el texto al portapapeles con confirmación `✓` durante 1.2 s. Usa `navigator.clipboard.writeText` con fallback a `document.execCommand` para contextos `file://`.
+- **Estadísticas honestas** — los mensajes de la persona y las respuestas del modelo se cuentan con las mismas reglas que la lista (la salida de herramientas, los envoltorios de comandos y las notificaciones no son mensajes tuyos); los duplicados tras `--resume` se fusionan; los registros de peticiones a la API se omiten (CLI 2.1.300+). `? N tipos de registro nuevos` señala tipos que esta versión aún no conoce: la lista aparece al pasar el ratón, y esos registros se muestran como JSON.
 - **Nombres amigables para herramientas** — las herramientas conocidas reciben iconos (p. ej. `📖 Read file`, `🖥️ Shell`, `📝 Edit file`). Herramientas desconocidas / MCP → `🔧 {raw_name}`.
 - **Tema automático** — el visor sigue el `prefers-color-scheme` del sistema por defecto. Pulsa el botón sol/luna para fijar una elección; la elección fijada persiste entre sesiones.
 - **Seis idiomas de interfaz** — English, Русский, Español, Français, 中文, العربية. El árabe cambia a RTL. Selector en la cabecera, preferencia guardada.
@@ -88,9 +94,10 @@ donde `<project-slug>` es tu directorio de trabajo con `/` reemplazado por `-`. 
 - **Parseo en streaming** — `.jsonl` se lee vía `file.stream()` + `TextDecoderStream`, no se carga como una sola cadena.
 - **Virtualización nativa** — `content-visibility: auto` en cada registro: el navegador omite layout y paint para entradas fuera de pantalla. Escala a miles de registros.
 - **Renderizado por lotes** — 500 registros por lote, botón «Mostrar más» para el resto.
-- **Filtros** — cinco casillas (thinking / tools / results / system / ui-state), alternan categorías vía una sola clase CSS en el contenedor (sin reflow del DOM).
+- **Filtros** — seis casillas (thinking / tools / results / system / hooks / ui-state), alternan categorías vía una sola clase CSS en el contenedor (sin reflow del DOM).
 - **Renderizado seguro frente a XSS** — cada bloque de texto se escapa _antes_ de pasar por el parser de markdown. Las imágenes Markdown se neutralizan (texto inerte, nunca se descargan). Los enlaces se limitan a `http(s)` con `rel="noopener noreferrer nofollow"`.
 - **Límites de tamaño** — bloques de prosa truncados a 20 KB, bloques de servicio a 5 KB. Las operaciones de copia heredan estos límites — la página nunca envía megabytes al portapapeles y no puede colgar el navegador.
+- **⤢ Abrir completo** — una entrada recortada para mostrarse tiene un botón `⤢`: el texto completo se abre en un panel sobre la lista (texto / markdown / JSON original del registro), con «copiar todo» y «guardar en archivo». La altura de la lista no cambia.
 - **Fallback para `.json`** — si el archivo no es JSONL sino un array/objeto JSON plano, se interpreta como lista de registros.
 
 ## Requisitos del navegador
@@ -109,25 +116,42 @@ Una sola, empaquetada localmente en `lib/`:
 
 Sin CDN, sin red, sin Subresource Integrity. Clona y ejecuta.
 
+## Qué hay de personal en una transcripción
+
+Una transcripción guarda mucho más que la conversación. Antes de compartir un archivo `.jsonl` —o una captura del visor—, ten en cuenta lo que contiene:
+
+- todos los mensajes, bloques de thinking y salidas de herramientas, incluido el contenido de archivos y la salida de comandos, que pueden contener claves, tokens o contraseñas;
+- rutas absolutas, tu nombre de usuario, el directorio de trabajo y la rama de git, repetidos en cada registro;
+- el correo de tu cuenta, el prompt de sistema completo y el texto de tus archivos `CLAUDE.md`: el visor pliega estos registros y solo muestra su tamaño;
+- imágenes: capturas y páginas de archivos PDF leídos durante la sesión;
+- registros completos de peticiones a la API (líneas `api-request*`, CLI 2.1.300+; a menudo la mayor parte del archivo): el visor los omite, pero están en el archivo.
+
+Las salidas demasiado grandes no están en la transcripción: Claude Code las guarda en `<sesión>/tool-results/` junto al archivo, y el visor solo muestra una vista previa de ~2 KB y la ruta.
+
 ## Privacidad
 
-Todo funciona localmente en tu navegador. El visor en sí **no realiza peticiones de red automáticas** — sin CDN, sin analítica, sin fuentes remotas. Las imágenes Markdown incrustadas en las transcripciones se neutralizan: se muestran como texto inerte con la URL visible, pero nunca se descargan. Los enlaces externos (sólo `http(s)`) se abren en una nueva pestaña sólo al hacer clic, con `rel="noopener noreferrer nofollow"`. Tus transcripciones se quedan en tu máquina.
+Todo funciona localmente en tu navegador. El visor en sí **no realiza peticiones de red automáticas** — sin CDN, sin analítica, sin fuentes remotas. Las imágenes Markdown incrustadas en las transcripciones se neutralizan: se muestran como texto inerte con la URL visible, pero nunca se descargan. Los enlaces externos (sólo `http(s)`) se abren en una nueva pestaña sólo al hacer clic, con `rel="noopener noreferrer nofollow"`. Tus transcripciones se quedan en tu máquina. Las imágenes guardadas dentro de la transcripción (base64) se dibujan desde el propio archivo, también sin ninguna petición de red.
 
 ## Limitaciones conocidas
 
 - Archivos mayores de ~100 MB necesitan carga indexada por line-offsets con renderizado por ventanas (no implementado).
 - No hay exportación a Markdown/HTML (el objetivo es visualizar, no convertir).
 - Sin resaltado de sintaxis en bloques de código (decisión consciente para minimizar dependencias).
+- Un mensaje que editaste y volviste a enviar aparece dos veces: las ramas de la conversación aún no se dibujan como árbol.
+- Las etiquetas de los registros de servicio muestran el nombre en bruto del tipo (p. ej. `hook_success`), sin traducir: así los tipos nuevos no necesitan traducción.
 
 ## Desarrollo
 
 Todo el código vive en un único archivo HTML. Edítalo directamente — estilos en `<style>`, lógica en `<script>`, traducciones en el objeto `I18N` al principio del script.
 
-Verificar la sintaxis de JS sin navegador:
+Comprobar la sintaxis y ejecutar las pruebas sin navegador (no hay nada que instalar):
 
 ```bash
-sed -n '/^<script>$/,/^<\/script>$/p' index.html | sed '1d;$d' | node --check /dev/stdin
+node scripts/check-syntax.mjs  # syntax of the inline script
+node --test test/*.test.mjs    # unit tests
 ```
+
+Las partes sin DOM —la selección de registros y las tablas de reglas que deciden cómo se muestra cada tipo de registro— están entre las marcas `// ===== triage =====` y `// ===== rules =====`; las pruebas las extraen de `index.html` y las ejecutan en Node. Dar soporte a un tipo de registro nuevo suele ser una entrada en una tabla de reglas.
 
 ## Licencia
 

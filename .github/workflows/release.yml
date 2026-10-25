@@ -16,7 +16,12 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
+
+      - name: Check syntax and run tests
+        run: |
+          node scripts/check-syntax.mjs
+          node --test test/*.test.mjs
 
       - name: Build single-file HTML
         run: node scripts/build-single.mjs "$GITHUB_REF_NAME"
@@ -37,7 +42,7 @@ jobs:
 
             - [marked](https://github.com/markedjs/marked) v12 — markdown → HTML (~35 KB)
 
-            That's it. Everything else is vanilla HTML / CSS / JS. Total file weight: ~76 KB.
+            That's it. Everything else is vanilla HTML / CSS / JS. Total file weight: ~140 KB.
 
             ## Features
 
@@ -45,6 +50,9 @@ jobs:
             - 📖 **Reader mode** — hide tool noise, keep only user + assistant messages
             - 📋 **Copy per message** button in each entry
             - 🔧 **Friendly tool names** — `📝 Edit file`, `🖥️ Shell`, `📖 Read file`…
+            - ❓ **Questions with answers, subagent reports, hooks, compaction dividers, images** — shown for what they are, not as raw records
+            - ⤢ **Open in full** — entries cut for display open whole in a panel (text / markdown / raw JSON)
+            - 🧾 **Honest stats** — your messages counted by the feed's own rules, `--resume` duplicates merged, API request logs skipped, `? N new record types` when the format moves on
             - 🎨 **Auto light/dark theme** from your OS, with manual override
             - 🌐 **Six UI languages** — English, Русский, Español, Français, 中文, العربية (RTL for Arabic)
             - 🔒 **Zero network requests** — Markdown images neutralized, external links sandboxed
