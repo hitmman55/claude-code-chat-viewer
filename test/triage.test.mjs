@@ -5,11 +5,17 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
-const start = html.indexOf("// ===== triage =====");
-const end = html.indexOf("// ===== end triage =====");
-assert.ok(start >= 0 && end > start, "triage section markers not found in index.html");
+const section = (name) => {
+  const start = html.indexOf(`// ===== ${name} =====`);
+  const end = html.indexOf(`// ===== end ${name} =====`);
+  assert.ok(start >= 0 && end > start, `${name} section markers not found in index.html`);
+  return html.slice(start, end);
+};
+// computeStats consults the rule tables to list record types without a rule.
 const T = new Function(
-  html.slice(start, end) + "\nreturn { newTriage, triageLine, triageRecord, computeStats };",
+  section("triage") +
+    section("rules") +
+    "\nreturn { newTriage, triageLine, triageRecord, computeStats };",
 )();
 
 const lines = (tri, ...ls) => ls.forEach((l) => T.triageLine(tri, l));

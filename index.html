@@ -38,6 +38,7 @@
         --c-meta: #d8b36a;
         --c-system: #7a8494;
         --c-error: #ff6b6b;
+        --c-hook: #e08fb4;
         --pre-bg: #0b0f14;
         --code-bg: rgba(120, 140, 170, 0.15);
       }
@@ -58,6 +59,7 @@
         --c-meta: #ca8a04;
         --c-system: #6b7280;
         --c-error: #dc2626;
+        --c-hook: #be185d;
         --pre-bg: #f3f4f7;
         --code-bg: rgba(50, 60, 80, 0.08);
       }
@@ -181,7 +183,8 @@
         margin-inline-end: 6px;
         font-size: 10px;
       }
-      .e .hdr .copy-btn {
+      .e .hdr .copy-btn,
+      .e .hdr .full-btn {
         all: unset;
         cursor: pointer;
         display: inline-block;
@@ -195,14 +198,17 @@
           opacity 0.12s,
           background 0.12s;
       }
-      .e:hover .copy-btn {
+      .e:hover .copy-btn,
+      .e:hover .full-btn {
         opacity: 0.85;
       }
-      .e .copy-btn:hover {
+      .e .copy-btn:hover,
+      .e .full-btn:hover {
         opacity: 1;
         background: var(--bg-3);
       }
-      .e .copy-btn:focus-visible {
+      .e .copy-btn:focus-visible,
+      .e .full-btn:focus-visible {
         opacity: 1;
         outline: 2px solid var(--accent);
         outline-offset: 2px;
@@ -243,6 +249,100 @@
       }
       .e.task-note {
         --bar: var(--c-meta);
+      }
+      .e.hook {
+        --bar: var(--c-hook);
+      }
+      .e.system.error,
+      .e.hook.error {
+        --bar: var(--c-error);
+      }
+      .e.divider > .body {
+        border-block-start: 1px dashed var(--c-system);
+        padding-block-start: 6px;
+      }
+      .e .line {
+        font-size: 12px;
+        color: var(--muted);
+        font-family: ui-monospace, "SF Mono", Menlo, monospace;
+      }
+
+      /* Full-text panel: one modal for any truncated entry; the feed keeps its heights. */
+      #full-panel {
+        width: min(1100px, 95vw);
+        height: 90vh;
+        max-width: none;
+        max-height: none;
+        padding: 0;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--bg);
+        color: var(--text);
+      }
+      #full-panel[open] {
+        display: flex;
+        flex-direction: column;
+      }
+      #full-panel::backdrop {
+        background: rgba(0, 0, 0, 0.55);
+      }
+      .fp-bar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+        padding: 10px 14px;
+        border-block-end: 1px solid var(--border);
+        background: var(--bg-2);
+      }
+      #fp-title {
+        flex: 1 1 12em;
+        min-width: 0;
+        font-family: ui-monospace, "SF Mono", Menlo, monospace;
+        font-size: 12px;
+        color: var(--muted);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .fp-bar button {
+        color: var(--text);
+        background: var(--bg-3);
+        border: 1px solid var(--border);
+        padding: 4px 10px;
+        border-radius: 6px;
+        font: inherit;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      .fp-bar button:hover:not(:disabled),
+      .fp-bar button:focus-visible {
+        border-color: var(--accent);
+        outline: none;
+      }
+      .fp-bar button[aria-pressed="true"] {
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+      .fp-bar button:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+      #fp-body {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow: auto;
+        padding: 14px;
+      }
+      #fp-body > pre {
+        margin: 0;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        font:
+          12.5px/1.5 ui-monospace,
+          "SF Mono",
+          Menlo,
+          monospace;
       }
 
       .prose {
@@ -421,6 +521,9 @@
       main.hide-ui .e.ui {
         display: none;
       }
+      main.hide-hooks .e.hook {
+        display: none;
+      }
       main.reader-mode .e:not(.user):not(.assistant) {
         display: none;
       }
@@ -445,6 +548,9 @@
         <label
           ><input type="checkbox" id="f-system" /> <span class="f-label" data-k="system"></span
         ></label>
+        <label
+          ><input type="checkbox" id="f-hooks" /> <span class="f-label" data-k="hooks"></span
+        ></label>
         <label><input type="checkbox" id="f-ui" /> <span class="f-label" data-k="ui"></span></label>
       </div>
       <label><input type="checkbox" id="reader-mode" /> <span id="reader-mode-label"></span></label>
@@ -460,6 +566,18 @@
       <div id="stats"></div>
     </header>
     <main id="chat"><div class="empty" id="emptyState"></div></main>
+    <dialog id="full-panel" aria-labelledby="fp-title">
+      <div class="fp-bar">
+        <span id="fp-title"></span>
+        <button type="button" data-mode="text"></button>
+        <button type="button" data-mode="md"></button>
+        <button type="button" data-mode="json"></button>
+        <button type="button" id="fp-copy"></button>
+        <button type="button" id="fp-save"></button>
+        <button type="button" id="fp-close"></button>
+      </div>
+      <div id="fp-body"></div>
+    </dialog>
 
     <script>
       // ===== i18n =====
@@ -468,6 +586,7 @@
         tools: "tools",
         results: "results",
         system: "system/meta",
+        hooks: "hooks",
         ui: "ui-state",
       };
       const I18N = {
@@ -491,6 +610,15 @@
           chars: (n) => `${n} chars`,
           systemInject: "system inject",
           readerMode: "Reader mode",
+          openFull: "Open in full",
+          modeText: "Text",
+          modeMd: "Markdown",
+          modeJson: "Record JSON",
+          copyAll: "Copy all",
+          saveFile: "Save file",
+          close: "Close",
+          mdTooBig: "Too large for markdown — use Text",
+          newTypes: (n) => `? ${n} new record types`,
           copy: "Copy",
           copied: "Copied!",
           tryExample: "Try with example",
@@ -499,6 +627,7 @@
             tools: "Tools",
             results: "Results",
             system: "System / meta",
+            hooks: "Hooks",
             ui: "UI state",
           },
         },
@@ -522,6 +651,15 @@
           chars: (n) => `${n} симв`,
           systemInject: "system inject",
           readerMode: "Режим чтения",
+          openFull: "Открыть целиком",
+          modeText: "Текст",
+          modeMd: "Markdown",
+          modeJson: "JSON записи",
+          copyAll: "Скопировать всё",
+          saveFile: "Сохранить файл",
+          close: "Закрыть",
+          mdTooBig: "Слишком большой для markdown — откройте «Текст»",
+          newTypes: (n) => `? новых типов записей: ${n}`,
           copy: "Скопировать",
           copied: "Скопировано!",
           tryExample: "Открыть пример",
@@ -530,6 +668,7 @@
             tools: "Инструменты",
             results: "Результаты",
             system: "Система / мета",
+            hooks: "Хуки",
             ui: "UI-состояния",
           },
         },
@@ -553,6 +692,15 @@
           chars: (n) => `${n} car.`,
           systemInject: "inyección del sistema",
           readerMode: "Modo lectura",
+          openFull: "Abrir completo",
+          modeText: "Texto",
+          modeMd: "Markdown",
+          modeJson: "JSON del registro",
+          copyAll: "Copiar todo",
+          saveFile: "Guardar archivo",
+          close: "Cerrar",
+          mdTooBig: "Demasiado grande para markdown — usa Texto",
+          newTypes: (n) => `? ${n} tipos de registro nuevos`,
           copy: "Copiar",
           copied: "¡Copiado!",
           tryExample: "Probar con ejemplo",
@@ -561,6 +709,7 @@
             tools: "Herramientas",
             results: "Resultados",
             system: "Sistema / meta",
+            hooks: "Hooks",
             ui: "Estado UI",
           },
         },
@@ -585,6 +734,15 @@
           chars: (n) => `${n} car.`,
           systemInject: "injection système",
           readerMode: "Mode lecture",
+          openFull: "Ouvrir en entier",
+          modeText: "Texte",
+          modeMd: "Markdown",
+          modeJson: "JSON de l'enregistrement",
+          copyAll: "Tout copier",
+          saveFile: "Enregistrer le fichier",
+          close: "Fermer",
+          mdTooBig: "Trop volumineux pour le markdown — utilise Texte",
+          newTypes: (n) => `? ${n} nouveaux types d'enregistrement`,
           copy: "Copier",
           copied: "Copié !",
           tryExample: "Essayer avec l'exemple",
@@ -593,6 +751,7 @@
             tools: "Outils",
             results: "Résultats",
             system: "Système / méta",
+            hooks: "Hooks",
             ui: "État UI",
           },
         },
@@ -616,6 +775,15 @@
           chars: (n) => `${n} 字`,
           systemInject: "系统注入",
           readerMode: "阅读模式",
+          openFull: "完整打开",
+          modeText: "文本",
+          modeMd: "Markdown",
+          modeJson: "记录 JSON",
+          copyAll: "全部复制",
+          saveFile: "保存文件",
+          close: "关闭",
+          mdTooBig: "内容过大，无法以 Markdown 显示 — 请用文本",
+          newTypes: (n) => `? ${n} 种新记录类型`,
           copy: "复制",
           copied: "已复制!",
           tryExample: "试用示例",
@@ -624,6 +792,7 @@
             tools: "工具",
             results: "结果",
             system: "系统 / 元",
+            hooks: "钩子",
             ui: "UI 状态",
           },
         },
@@ -647,6 +816,15 @@
           chars: (n) => `${n} حرفًا`,
           systemInject: "حقن النظام",
           readerMode: "وضع القراءة",
+          openFull: "فتح كاملًا",
+          modeText: "نص",
+          modeMd: "Markdown",
+          modeJson: "JSON السجل",
+          copyAll: "نسخ الكل",
+          saveFile: "حفظ الملف",
+          close: "إغلاق",
+          mdTooBig: "أكبر من أن يُعرض بـ Markdown — استخدم النص",
+          newTypes: (n) => `? ${n} أنواع سجلات جديدة`,
           copy: "نسخ",
           copied: "تم النسخ!",
           tryExample: "جرّب مثالاً",
@@ -655,6 +833,7 @@
             tools: "الأدوات",
             results: "النتائج",
             system: "النظام / الميتا",
+            hooks: "الخطافات",
             ui: "حالة الواجهة",
           },
         },
@@ -716,7 +895,7 @@
       const langSel = document.getElementById("lang");
       const themeBtn = document.getElementById("theme");
 
-      const FILTERS = ["thinking", "tools", "results", "system", "ui"];
+      const FILTERS = ["thinking", "tools", "results", "system", "hooks", "ui"];
       const fbox = Object.fromEntries(FILTERS.map((k) => [k, document.getElementById("f-" + k)]));
       Object.values(fbox).forEach((el) => el.addEventListener("change", applyFilters));
       const readerBox = document.getElementById("reader-mode");
@@ -902,6 +1081,7 @@
           nService = 0;
         // One API response is written as several lines (one per content block).
         const asstIds = new Set();
+        const newTypes = new Set();
         for (const r of rows) {
           if (r?.timestamp) {
             firstTs ??= r.timestamp;
@@ -916,10 +1096,498 @@
             if (id) asstIds.add(id);
             else nAsstAnon++; // hand-made files (demo.jsonl) carry no ids at all
           } else if (typeof t === "string" && t !== "system") nService++;
+          if (t !== "user" && t !== "assistant" && r && typeof r === "object") {
+            const k = missingRuleKey(r);
+            if (k) newTypes.add(k);
+          }
         }
-        return { firstTs, lastTs, nUser, nAsst: asstIds.size + nAsstAnon, nService };
+        return {
+          firstTs,
+          lastTs,
+          nUser,
+          nAsst: asstIds.size + nAsstAnon,
+          nService,
+          newTypes: [...newTypes].sort(),
+        };
       }
       // ===== end triage =====
+
+      // ===== rules =====
+      // Rule tables (registry) for service records. A rule is data: which filter bucket
+      // (kind) a record goes to and how to summarize it. Rules never build HTML —
+      // rowToEntries escapes everything it gets from here. A record without a rule is
+      // "recognized" when it has rendered[] text or a typical text field, otherwise
+      // "unknown" (JSON dump). The badge is the raw type name, so adding a rule needs
+      // no translations. DOM-free like the triage section (see test/rules.test.mjs).
+      // Rule fields (value or fn(payload, record)): icon, kind, who, summary, body
+      // (undefined → default text, null → none, string, or { json }), md, hide,
+      // prose (render like a chat message), sensitive (no preview), divider.
+
+      const hasOwn = (o, k) => k != null && Object.prototype.hasOwnProperty.call(o, k);
+      const arr = (x) => (Array.isArray(x) ? x : []);
+      const clip = (s, n = 80) => {
+        const p = String(s ?? "")
+          .replace(/\s+/g, " ")
+          .trim();
+        return p.length > n ? p.slice(0, n) + "…" : p;
+      };
+      const fmtDur = (ms) => {
+        if (typeof ms !== "number" || !isFinite(ms)) return "";
+        if (ms < 1000) return `${Math.round(ms)}ms`;
+        const sec = ms / 1000;
+        if (sec < 60) return `${sec.toFixed(1)}s`;
+        const m = Math.floor(sec / 60);
+        if (m < 60) return `${m}m ${Math.round(sec % 60)}s`;
+        return `${Math.floor(m / 60)}h ${m % 60}m`;
+      };
+      const fmtK = (n) =>
+        typeof n !== "number" ? "?" : n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1000 ? `${Math.round(n / 1000)}k` : String(n);
+      const joinDot = (...xs) =>
+        xs.filter((x) => x != null && x !== "" && x !== false && x !== 0).join(" · ");
+      const textLines = (...xs) =>
+        xs
+          .flat()
+          .filter((x) => x != null && x !== "")
+          .map((x) => (typeof x === "string" ? x : JSON.stringify(x)))
+          .join("\n");
+      const baseName = (path) => String(path ?? "").split("/").pop();
+
+      const REMINDER_WRAP = /^<system-reminder>\n?([\s\S]*?)\n?<\/system-reminder>$/;
+      // rendered[] (CLI 2.1.268+): the text the model actually saw for this record.
+      function renderedText(r) {
+        return arr(r?.rendered)
+          .map((x) => (typeof x === "string" ? x : typeof x?.content === "string" ? x.content : ""))
+          .map((t) => t.trim().replace(REMINDER_WRAP, "$1"))
+          .filter(Boolean)
+          .join("\n\n");
+      }
+      const TEXT_FIELDS = ["text", "content", "prompt", "snippet", "planContent", "banner", "message"];
+      function typicalText(payload) {
+        for (const k of TEXT_FIELDS) {
+          const v = payload?.[k];
+          if (typeof v === "string" && v.trim()) return v;
+        }
+        return "";
+      }
+
+      const HIDE = { hide: true };
+      const hookName = (a) => a.hookName ?? a.hookEvent;
+      const hookSummary = (a) =>
+        joinDot(hookName(a), a.exitCode != null && `exit ${a.exitCode}`, fmtDur(a.durationMs));
+      const LEVEL_ICON = { warning: "⚠", error: "❌" };
+
+      const SYSTEM_RULES = {
+        turn_duration: {
+          icon: "⏱",
+          summary: (r) =>
+            joinDot(
+              fmtDur(r.durationMs),
+              r.messageCount != null && `${r.messageCount} msgs`,
+              r.pendingBackgroundAgentCount && `${r.pendingBackgroundAgentCount} bg agents`,
+            ),
+          body: null,
+        },
+        stop_hook_summary: {
+          icon: "🪝",
+          kind: (r) => (arr(r.hookErrors).length || r.preventedContinuation ? "hook error" : "hook"),
+          summary: (r) =>
+            joinDot(
+              `${r.hookCount ?? arr(r.hookInfos).length} hooks`,
+              arr(r.hookErrors).length && `⚠ ${arr(r.hookErrors).length} errors`,
+              r.preventedContinuation && "⛔ blocked",
+              clip(r.stopReason, 60),
+            ),
+          body: (r) =>
+            textLines(
+              arr(r.hookInfos).map((h) => joinDot(h?.command ?? clip(h?.promptText, 120), fmtDur(h?.durationMs))),
+              arr(r.hookErrors).map((e) => `⚠ ${typeof e === "string" ? e : JSON.stringify(e)}`),
+            ),
+        },
+        away_summary: { icon: "📋", summary: (r) => clip(r.content, 100), md: true },
+        local_command: { icon: "⚡", summary: (r) => commandSummary(r.content) },
+        compact_boundary: {
+          icon: "✂",
+          divider: true,
+          summary: (r) => {
+            const m = r.compactMetadata ?? {};
+            return joinDot(
+              `compact (${m.trigger ?? "?"})`,
+              m.preTokens != null &&
+                (m.postTokens != null ? `${fmtK(m.preTokens)} → ${fmtK(m.postTokens)} tokens` : `${fmtK(m.preTokens)} tokens`),
+              fmtDur(m.durationMs),
+            );
+          },
+          body: (r) => ({ json: r.compactMetadata ?? r }),
+        },
+        model_refusal_fallback: {
+          icon: "⚠",
+          summary: (r) => joinDot(`${r.originalModel ?? "?"} → ${r.fallbackModel ?? "?"}`, r.apiRefusalCategory),
+        },
+        model_refusal_no_fallback: {
+          icon: "⛔",
+          kind: "system error",
+          summary: (r) => joinDot(r.originalModel, r.apiRefusalCategory),
+          body: (r) => r.apiRefusalExplanation || r.content || undefined,
+        },
+        api_error: {
+          icon: "❌",
+          kind: "system error",
+          summary: (r) => {
+            const e = r.error;
+            const msg = e?.error?.error?.message ?? e?.error?.message ?? e?.message;
+            return joinDot(
+              "API error",
+              e?.status,
+              clip(msg, 80),
+              r.retryAttempt != null && `retry ${r.retryAttempt}/${r.maxRetries ?? "?"}`,
+              fmtDur(r.retryInMs),
+            );
+          },
+          body: (r) => ({ json: r.error ?? r }),
+        },
+        informational: {
+          icon: (r) => LEVEL_ICON[r.level] ?? "ℹ",
+          kind: (r) => (r.level === "error" ? "system error" : "system"),
+          summary: (r) => clip(r.content, 120),
+          body: (r) => (typeof r.content === "string" && r.content.length > 120 ? r.content : null),
+        },
+        scheduled_task_fire: { icon: "⏰", summary: (r) => joinDot(clip(r.content, 100), r.cron), body: null },
+      };
+
+      function commandSummary(content) {
+        const s = typeof content === "string" ? content : "";
+        const pick = (tag) => s.match(new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`))?.[1]?.trim();
+        const name = pick("command-name");
+        if (name) return joinDot(name, clip(pick("command-args"), 60));
+        const out = pick("local-command-stdout");
+        if (out != null) return `stdout · ${clip(out, 80)}`;
+        return clip(s, 100);
+      }
+
+      const ATTACHMENT_RULES = {
+        // Typed while the agent was busy: human prompts are real user messages,
+        // task notifications are machine messages (owner decision 2026-08-24).
+        queued_command: {
+          icon: "⏳",
+          kind: (a) => (a.commandMode === "prompt" ? "user" : "task-note"),
+          who: (a) => (a.commandMode === "prompt" ? "user" : "task"),
+          prose: (a) => a.commandMode === "prompt",
+          summary: (a) => clip(a.prompt, 90),
+          body: (a) => (typeof a.prompt === "string" ? a.prompt : undefined),
+          md: true,
+        },
+        hook_success: {
+          icon: "🪝",
+          kind: "hook",
+          summary: hookSummary,
+          body: (a) => textLines(a.stdout, a.stderr, a.content),
+        },
+        hook_non_blocking_error: {
+          icon: "🪝",
+          kind: "hook error",
+          summary: hookSummary,
+          body: (a) => textLines(a.stderr, a.stdout, a.command && `command: ${a.command}`),
+        },
+        hook_blocking_error: {
+          icon: "⛔",
+          kind: "hook error",
+          summary: (a) => joinDot(hookName(a), clip(a.blockingError?.blockingError, 80)),
+          body: (a) =>
+            textLines(a.blockingError?.blockingError, a.blockingError?.command && `command: ${a.blockingError.command}`),
+        },
+        hook_cancelled: {
+          icon: "⏱",
+          kind: "hook error",
+          summary: (a) =>
+            joinDot(hookName(a), a.timedOut ? `timeout ${fmtDur(a.timeoutMs)}` : "cancelled", fmtDur(a.durationMs)),
+          body: (a) => a.command ?? null,
+        },
+        hook_additional_context: {
+          icon: "🪝",
+          kind: "hook",
+          summary: (a) => joinDot(hookName(a), clip(textLines(a.content), 80)),
+          body: (a) => textLines(a.content) || undefined,
+        },
+        hook_system_message: {
+          icon: "🪝",
+          kind: "hook",
+          summary: (a) => joinDot(hookName(a), clip(a.content, 80)),
+        },
+        file: {
+          icon: "📄",
+          summary: (a) =>
+            joinDot(a.displayPath ?? a.filename, a.content?.file?.numLines != null && `${a.content.file.numLines} lines`),
+          body: (a) => a.content?.file?.content,
+        },
+        edited_text_file: { icon: "✏️", summary: (a) => a.displayPath ?? a.filename },
+        directory: { icon: "📁", summary: (a) => a.displayPath ?? a.path },
+        compact_file_reference: { icon: "📄", summary: (a) => a.displayPath ?? a.filename, body: null },
+        invoked_skills: {
+          icon: "⭐",
+          summary: (a) =>
+            arr(a.skills)
+              .map((x) => x?.name)
+              .filter(Boolean)
+              .join(", "),
+          body: (a) => arr(a.skills).map((x) => `# ${x?.name ?? "?"}\n\n${x?.content ?? ""}`).join("\n\n") || undefined,
+          md: true,
+        },
+        nested_memory: {
+          icon: "🧠",
+          summary: (a) => a.displayPath ?? a.path,
+          body: (a) => a.content?.content,
+          md: true,
+        },
+        plan_file_reference: { icon: "📝", summary: (a) => baseName(a.planFilePath), body: (a) => a.planContent, md: true },
+        plan_mode: { icon: "📝", kind: "system", summary: (a) => joinDot("plan mode", baseName(a.planFilePath)), body: null },
+        plan_mode_exit: {
+          icon: "📝",
+          kind: "system",
+          summary: (a) => joinDot("plan mode exit", baseName(a.planFilePath)),
+          body: null,
+        },
+        plan_mode_reentry: {
+          icon: "📝",
+          kind: "system",
+          summary: (a) => joinDot("plan mode re-entry", baseName(a.planFilePath)),
+          body: null,
+        },
+        // Sensitive: CLAUDE.md files, system prompt, e-mail, paths. Summary carries
+        // counts only, so a screenshot of the collapsed feed leaks nothing.
+        instructions: {
+          icon: "📜",
+          sensitive: true,
+          summary: (a) => `${arr(a.files).length} files`,
+          body: (a) => arr(a.files).map((f) => joinDot(f?.type, f?.path)).join("\n") || undefined,
+        },
+        prompt_snapshot: {
+          icon: "🧾",
+          sensitive: true,
+          summary: (a) => `${arr(a.systemPrompt).length} parts`,
+          body: (a) => arr(a.systemPrompt).filter((x) => typeof x === "string").join("\n\n---\n\n") || undefined,
+        },
+        session_context: {
+          icon: "🔒",
+          sensitive: true,
+          summary: (a) => Object.keys(a.context ?? {}).join(", "),
+        },
+        environment: {
+          icon: "🖥",
+          sensitive: true,
+          summary: (a) => joinDot(a.snapshot?.platform, a.snapshot?.shell),
+        },
+        credential_org: HIDE,
+        total_tokens_reminder: HIDE,
+        model: { icon: "🤖", summary: (a) => a.identity?.modelId ?? clip(a.text), body: null },
+        date: { icon: "📅", summary: (a) => a.date, body: null },
+        date_change: { icon: "📅", kind: "system", summary: (a) => joinDot("date change", a.newDate), body: null },
+        language: { icon: "🌐", summary: (a) => a.language, body: null },
+        diagnostics: {
+          icon: "🩺",
+          summary: (a) =>
+            joinDot(
+              `${arr(a.files).length} files`,
+              `${arr(a.files).reduce((n, f) => n + arr(f?.diagnostics).length, 0)} issues`,
+            ),
+          body: (a) =>
+            arr(a.files)
+              .flatMap((f) =>
+                arr(f?.diagnostics).map(
+                  (d) =>
+                    `${baseName(f?.uri)}:${(d?.range?.start?.line ?? 0) + 1} ${d?.severity ?? ""} ${d?.message ?? ""}`,
+                ),
+              )
+              .join("\n") || undefined,
+        },
+        deferred_tools_delta: {
+          icon: "🔧",
+          summary: (a) =>
+            joinDot(arr(a.addedNames).length && `+${arr(a.addedNames).length}`, arr(a.removedNames).length && `−${arr(a.removedNames).length}`),
+        },
+        deferred_tools_record: {
+          icon: "🔧",
+          summary: (a) => `${arr(a.entries).length} tools`,
+          body: (a) =>
+            arr(a.entries)
+              .map((e) => e?.name)
+              .filter(Boolean)
+              .join("\n") || undefined,
+        },
+        mcp_instructions_delta: { icon: "🔌", summary: (a) => arr(a.addedNames).join(", ") },
+        agent_listing_delta: { icon: "🤖", summary: (a) => `${arr(a.addedTypes).length} agent types` },
+        skill_listing: { icon: "⭐", summary: (a) => `${a.skillCount ?? arr(a.names).length} skills` },
+        command_permissions: {
+          icon: "🔐",
+          summary: (a) => `${arr(a.allowedTools).length} allowed`,
+          body: (a) => textLines(a.allowedTools) || null,
+        },
+        task_reminder: {
+          icon: "☑️",
+          hide: (a) => !a.itemCount,
+          summary: (a) => `${a.itemCount} tasks`,
+          body: (a) => ({ json: a.content ?? a }),
+        },
+        task_status: {
+          icon: "🤖",
+          kind: "task-note",
+          who: "task",
+          summary: (a) => joinDot(a.description, a.status),
+          body: (a) => a.deltaSummary ?? null,
+        },
+        auto_mode: { icon: "🤖", summary: "auto mode" },
+        auto_mode_exit: { icon: "🤖", summary: "auto mode exit" },
+        ultrathink_effort: { icon: "🧠", summary: (a) => a.level, body: null },
+        ultra_effort_enter: { icon: "🧠" },
+        workflow_keyword_request: { icon: "🔀" },
+        silent_turn_reminder: { icon: "💬" },
+        bash_output_audience_note: { icon: "💬" },
+        batching_reminder_sent: { icon: "💬" },
+        read_truncation_notice: { icon: "✂", summary: (a) => clip(a.banner, 100), body: null },
+        remote_session_change: { icon: "🔗" },
+        session_cron_carry: { icon: "⏰", summary: (a) => clip(a.wakeup?.reason, 80), body: (a) => ({ json: a }) },
+        thinking_drop: {
+          icon: "💭",
+          summary: (a) =>
+            joinDot(a.newlyDropped?.reason, a.newlyDropped?.blockCount != null && `${a.newlyDropped.blockCount} blocks`),
+          body: (a) => ({ json: a }),
+        },
+        structured_output: { icon: "🧩", kind: "task-note", who: "task", body: (a) => ({ json: a.data ?? a }) },
+        dynamic_skill: { icon: "⭐", summary: (a) => arr(a.skillNames).join(", "), body: null },
+        goal_status: {
+          icon: "🎯",
+          kind: "system",
+          summary: (a) => joinDot(a.met ? "✅ met" : "⏳ not met", clip(a.condition, 80)),
+          body: (a) => a.reason ?? null,
+        },
+      };
+
+      const RECORD_RULES = {
+        mode: HIDE,
+        "atis-latch": HIDE,
+        "last-prompt": HIDE,
+        "agent-setting": HIDE,
+        "custom-title": { icon: "🏷", summary: (r) => r.customTitle, body: null },
+        "ai-title": { icon: "🏷", summary: (r) => r.aiTitle, body: null },
+        "agent-name": { icon: "🏷", summary: (r) => r.agentName, body: null },
+        "permission-mode": { icon: "🔐", summary: (r) => r.permissionMode, body: null },
+        "queue-operation": {
+          icon: "⏳",
+          summary: (r) => joinDot(r.operation, clip(r.content, 80)),
+          body: (r) => (typeof r.content === "string" ? r.content : null),
+        },
+        "file-history-snapshot": {
+          icon: "💾",
+          summary: (r) => `${Object.keys(r.snapshot?.trackedFileBackups ?? {}).length} files`,
+          body: null,
+        },
+        "file-history-delta": { icon: "💾", summary: (r) => r.trackingPath, body: null },
+        "pr-link": {
+          icon: "🔗",
+          kind: "system",
+          summary: (r) => joinDot(r.prRepository, r.prNumber != null && `#${r.prNumber}`),
+          body: (r) => (typeof r.prUrl === "string" ? r.prUrl : null),
+          md: true,
+        },
+        "fork-context-ref": { icon: "🍴", kind: "system", summary: (r) => r.parentSessionId, body: null },
+        progress: { icon: "⏳", summary: (r) => r.data?.type, body: (r) => ({ json: r.data ?? r }) },
+        "cost-state": {
+          icon: "💲",
+          kind: "system",
+          summary: (r) =>
+            joinDot(
+              typeof r.totalCostUSD === "number" && `$${r.totalCostUSD.toFixed(2)}`,
+              fmtDur(r.totalDuration),
+              r.totalLinesAdded != null && `+${r.totalLinesAdded} −${r.totalLinesRemoved ?? 0}`,
+            ),
+          body: (r) => ({ json: r.modelUsage ?? r }),
+        },
+        "frame-link": {
+          icon: "🖼",
+          summary: (r) => r.title ?? baseName(r.path),
+          body: (r) => (typeof r.frameUrl === "string" ? r.frameUrl : null),
+          md: true,
+        },
+        "continued-in": { icon: "➡", kind: "system", summary: (r) => r.continuedInSessionId, body: null },
+        relocated: { icon: "📂", kind: "system", summary: (r) => r.relocatedCwd, body: null },
+        "worktree-state": {
+          icon: "🌿",
+          kind: "system",
+          summary: (r) => joinDot(r.worktreeSession?.worktreeName, r.worktreeSession?.worktreeBranch),
+          body: (r) => ({ json: r.worktreeSession ?? r }),
+        },
+        summary: { icon: "📋", kind: "system", summary: (r) => clip(r.summary, 100), body: (r) => r.summary },
+        // workflow journals (subagents/workflows/wf_*)
+        launched: { icon: "🔀", body: null },
+        started: { icon: "🔀", summary: (r) => joinDot(r.label, r.phase), body: null },
+        result: { icon: "🔀", summary: (r) => clip(r.result?.scenario ?? r.agentId), body: (r) => ({ json: r.result ?? r }) },
+      };
+
+      // Tool calls that are really messages, not tool use.
+      const TOOL_RULES = {
+        // CLI 2.1.271+: a subagent's final report travels in this call's input.
+        SubagentHandback: { kind: "assistant", who: "handback", body: (i) => i?.message },
+      };
+
+      function describeTool(b) {
+        if (!hasOwn(TOOL_RULES, b?.name)) return null;
+        const rule = TOOL_RULES[b.name];
+        const body = rule.body(b.input);
+        if (typeof body !== "string" || !body.trim()) return null; // generic tool card instead
+        return { prose: true, kind: rule.kind, who: rule.who, tag: `↩ ${b.name}`, body, md: true };
+      }
+
+      function ruleTable(r) {
+        const t = r?.type;
+        if (t === "system") return [SYSTEM_RULES, r.subtype, r, "system"];
+        if (t === "attachment") {
+          const a = r.attachment && typeof r.attachment === "object" ? r.attachment : {};
+          return [ATTACHMENT_RULES, a.type, a, "attachment"];
+        }
+        return [RECORD_RULES, t, r, typeof t === "string" ? t : "unknown"];
+      }
+
+      // Key of a record type that has no rule yet (shown as "? N new types"), else null.
+      function missingRuleKey(r) {
+        const [table, sub] = ruleTable(r);
+        if (sub == null || typeof sub !== "string" || hasOwn(table, sub)) return null;
+        return r.type === "system" || r.type === "attachment" ? `${r.type}:${sub}` : sub;
+      }
+
+      function describeRecord(r) {
+        const [table, sub, payload, defaultWho] = ruleTable(r);
+        const rule = typeof sub === "string" && hasOwn(table, sub) ? table[sub] : null;
+        const v = (f) => (typeof f === "function" ? f(payload, r) : f);
+        if (rule && v(rule.hide)) return { hide: true };
+        let body = rule ? v(rule.body) : undefined;
+        let level = rule ? "known" : "recognized";
+        if (body === undefined) {
+          const text = renderedText(r) || typicalText(payload);
+          if (text) body = text;
+          else {
+            body = { json: payload };
+            if (!rule) level = "unknown";
+          }
+        }
+        if (body === "") body = null;
+        else if (body != null && typeof body !== "string" && !(typeof body === "object" && "json" in body))
+          body = { json: body };
+        const summary = rule ? v(rule.summary) : null;
+        const icon = rule ? v(rule.icon) : null;
+        const name = typeof sub === "string" ? sub : r?.type === "system" ? "system" : "?";
+        return {
+          level,
+          kind: (rule && v(rule.kind)) || (r?.type === "system" ? "system" : "ui"),
+          who: (rule && v(rule.who)) || defaultWho,
+          tag: icon ? `${icon} ${name}` : name,
+          summary: summary == null || summary === "" ? null : String(summary),
+          body,
+          md: !!(rule && v(rule.md)),
+          prose: !!(rule && v(rule.prose)) && typeof body === "string",
+          sensitive: !!rule?.sensitive,
+          divider: !!rule?.divider,
+        };
+      }
+      // ===== end rules =====
 
       async function parseFile(f) {
         const tri = newTriage();
@@ -955,6 +1623,7 @@
       function render(rows, fname, tri) {
         chatEl.innerHTML = "";
         state = { rows, idx: 0, fname, tri };
+        statsEl.title = "";
         if (!rows.length) {
           statsEl.textContent = tri?.apiReq
             ? `${fname} · ${L().apiLog(tri.apiReq, (tri.apiBytes / 1048576).toFixed(1))}`
@@ -962,7 +1631,7 @@
           chatEl.innerHTML = `<div class="empty">${L().emptyFile}</div>`;
           return;
         }
-        const { firstTs, lastTs, nUser, nAsst, nService } = computeStats(rows);
+        const { firstTs, lastTs, nUser, nAsst, nService, newTypes } = computeStats(rows);
         const parts = [
           fname,
           `${rows.length} ${L().records} (${L().service(nService)})`,
@@ -971,7 +1640,10 @@
         ];
         if (tri?.dups) parts.push(L().dups(tri.dups));
         if (tri?.apiReq) parts.push(L().apiLog(tri.apiReq, (tri.apiBytes / 1048576).toFixed(1)));
+        // Types the rule tables don't know yet — the early signal of a format change.
+        if (newTypes.length) parts.push(L().newTypes(newTypes.length));
         statsEl.textContent = parts.join(" · ");
+        statsEl.title = newTypes.join("\n");
         renderChunk();
         applyFilters();
       }
@@ -999,7 +1671,10 @@
               ),
             ];
           }
-          for (const el of els) frag.appendChild(el);
+          for (const el of els) {
+            recOf.set(el, state.rows[i]);
+            frag.appendChild(el);
+          }
         }
         chatEl.appendChild(frag);
         state.idx = end;
@@ -1024,41 +1699,42 @@
 
         if (t === "user") return userEntries(r, ts);
         if (t === "assistant") return assistantEntries(r, ts);
-        if (t === "system") {
-          // Some subtypes (turn_duration, stop_hook_summary, api_error) carry no
-          // content — dump the whole record instead of rendering "undefined".
-          const sysText = strContent(r.content ?? r);
-          return [
-            entry(
-              "system",
-              "system",
-              ts,
-              r.subtype || "system",
-              `<div class="prose"><pre><code>${esc(sysText)}</code></pre></div>`,
-              truncSvc(sysText),
-            ),
-          ];
+        // Everything else (system, attachment, state records, unknown) goes through
+        // the rule tables.
+        const spec = describeRecord(r);
+        return spec.hide ? [] : [specEntry(spec, ts)];
+      }
+
+      function specEntry(s, ts) {
+        const isJson = s.body != null && typeof s.body === "object";
+        const cut = { hit: false };
+        const bodyText = s.body == null ? "" : isJson ? stringifyBounded(s.body.json, cut) : s.body;
+        const full = isJson ? () => JSON.stringify(s.body.json, null, 2) : () => s.body;
+        if (s.prose) {
+          const shown = trunc(bodyText);
+          const html = `<div class="prose">${md(shown)}</div>`;
+          return entry(s.kind, s.who, ts, s.tag, html, shown, bodyText.length > MAX_PROSE ? full : null);
         }
-        if (t === "attachment") {
-          const attachText = stringifyBounded(r.attachment || r);
-          return [
-            entry(
-              "ui",
-              "attachment",
-              ts,
-              "📎",
-              svcDetails("attachment", "json", attachText, "language-json"),
-              truncSvc(attachText),
-            ),
-          ];
-        }
-        // file-history-snapshot / custom-title / agent-name / last-prompt / permission-mode / queue-operation
-        if (t) return [entry("ui", t, ts, "·", "")];
-        // typeless record: dump it instead of an "undefined" header over an empty body
-        const dump = stringifyBounded(r);
-        return [
-          entry("ui", "unknown", ts, "·", svcDetails("unknown", "json", dump, "language-json"), truncSvc(dump)),
-        ];
+        const summary =
+          s.summary != null
+            ? esc(s.summary)
+            : s.sensitive
+              ? esc(L().chars(bodyText.length))
+              : `${L().chars(bodyText.length)} · ${preview(bodyText, 80)}`;
+        const html =
+          s.body == null
+            ? `<div class="line">${summary}</div>`
+            : svcDetails("rule", summary, bodyText, isJson ? "language-json" : null, s.md);
+        const truncated = cut.hit || bodyText.length > MAX_SVC;
+        return entry(
+          s.kind + (s.divider ? " divider" : ""),
+          s.who,
+          ts,
+          s.tag,
+          html,
+          truncSvc(bodyText || s.summary || ""),
+          truncated ? full : null,
+        );
       }
 
       function userEntries(r, ts) {
@@ -1098,18 +1774,21 @@
           if (b.type === "text" && (b.text || "").trim()) {
             out.push(proseEntry("assistant", "claude", ts, b.text));
           } else if (b.type === "thinking" && (b.thinking || "").trim()) {
+            const th = b.thinking;
             out.push(
               entry(
                 "thinking",
                 "thinking",
                 ts,
                 "💭",
-                svcDetails("thinking", L().chars(b.thinking.length), b.thinking, null, true),
-                truncSvc(b.thinking),
+                svcDetails("thinking", L().chars(th.length), th, null, true),
+                truncSvc(th),
+                th.length > MAX_SVC ? () => th : null,
               ),
             );
           } else if (b.type === "tool_use") {
-            out.push(toolUseEntry(b, ts));
+            const spec = describeTool(b);
+            out.push(spec ? specEntry(spec, ts) : toolUseEntry(b, ts));
           }
         }
         return out;
@@ -1120,8 +1799,12 @@
       // never deals with megabyte content, so clipboard.writeText stays fast and
       // neither the site nor the browser can choke on huge payloads.
       const copyTexts = new WeakMap();
+      // Entries cut for display get a ⤢ button: entry element → () => untruncated text,
+      // built only when the panel opens. recOf: entry element → its source record.
+      const fullTexts = new WeakMap();
+      const recOf = new WeakMap();
 
-      function entry(kind, who, ts, tag, innerHTML, copyText = null) {
+      function entry(kind, who, ts, tag, innerHTML, copyText = null, full = null) {
         const el = document.createElement("div");
         el.className = "e " + kind;
         const tagHTML = tag ? `<span class="tag">${esc(tag)}</span>` : "";
@@ -1130,12 +1813,16 @@
           copyText != null && copyText !== ""
             ? `<button class="copy-btn" title="${esc(L().copy)}" aria-label="${esc(L().copy)}">📋</button>`
             : "";
+        const fullBtn = full
+          ? `<button class="full-btn" title="${esc(L().openFull)}" aria-label="${esc(L().openFull)}">⤢</button>`
+          : "";
         el.innerHTML =
           `<div class="body">` +
-          `<div class="hdr"><span class="who">${esc(who)}</span>${tagHTML}${timeHTML}${copyBtn}</div>` +
+          `<div class="hdr"><span class="who">${esc(who)}</span>${tagHTML}${timeHTML}${copyBtn}${fullBtn}</div>` +
           innerHTML +
           `</div>`;
         if (copyText != null && copyText !== "") copyTexts.set(el, copyText);
+        if (full) fullTexts.set(el, full);
         return el;
       }
 
@@ -1162,6 +1849,12 @@
 
       // Delegated click listener — one for all entries, O(1) memory regardless of count.
       chatEl.addEventListener("click", async (e) => {
+        const fb = e.target.closest(".full-btn");
+        if (fb && chatEl.contains(fb)) {
+          e.preventDefault();
+          openPanel(fb.closest(".e"), fb);
+          return;
+        }
         const btn = e.target.closest(".copy-btn");
         if (!btn || !chatEl.contains(btn)) return;
         e.preventDefault();
@@ -1182,7 +1875,8 @@
 
       function proseEntry(kind, who, ts, text) {
         const shown = trunc(text);
-        return entry(kind, who, ts, null, `<div class="prose">${md(shown)}</div>`, shown);
+        const full = text.length > MAX_PROSE ? () => text : null;
+        return entry(kind, who, ts, null, `<div class="prose">${md(shown)}</div>`, shown, full);
       }
 
       function metaEntry(text, ts, tag) {
@@ -1194,14 +1888,14 @@
           null,
           true,
         );
-        return entry("meta", "inject", ts, tag, html, shown);
+        return entry("meta", "inject", ts, tag, html, shown, text.length > MAX_SVC ? () => text : null);
       }
 
       function taskNoteEntry(text, ts) {
         // <task-notification> blob from subagents — shown as service, with markdown inside
         const shown = truncSvc(text);
         const html = svcDetails("task", preview(text, 90), text, null, true);
-        return entry("task-note", "task", ts, "📣", html, shown);
+        return entry("task-note", "task", ts, "📣", html, shown, text.length > MAX_SVC ? () => text : null);
       }
 
       // Known Claude Code tools get friendly label + emoji. Unknown (e.g. MCP tools
@@ -1223,12 +1917,31 @@
         Skill: "⭐ Skill",
         SlashCommand: "⚡ Slash command",
         ToolSearch: "🔎 Tool search",
+        SendMessage: "✉️ Message agent",
+        AskUserQuestion: "❓ Ask user",
+        ScheduleWakeup: "⏰ Schedule wakeup",
+        ListAgents: "🤖 List agents",
+        TaskCreate: "☑️ Create task",
+        TaskUpdate: "☑️ Update task",
+        TaskStop: "⏹ Stop task",
+        TaskOutput: "📤 Task output",
+        StructuredOutput: "🧩 Structured output",
+        CronCreate: "⏰ Create cron",
+        CronDelete: "⏰ Delete cron",
+        EnterPlanMode: "📝 Enter plan mode",
+        ExitPlanMode: "📝 Exit plan mode",
+        EnterWorktree: "🌿 Enter worktree",
+        ExitWorktree: "🌿 Exit worktree",
+        Workflow: "🔀 Workflow",
+        Artifact: "🖼 Artifact",
+        Monitor: "👁 Monitor",
       };
       const friendlyToolName = (name) => TOOL_LABELS[name] || `🔧 ${name}`;
 
       function toolUseEntry(b, ts) {
         const name = b.name || "tool";
-        const inputStr = b.input ? stringifyBounded(b.input) : "";
+        const cut = { hit: false };
+        const inputStr = b.input ? stringifyBounded(b.input, cut) : "";
         const hint =
           b.input && typeof b.input === "object"
             ? Object.entries(b.input)
@@ -1243,15 +1956,29 @@
             : "";
         const summary = `${esc(friendlyToolName(name))}${hint ? " · " + esc(hint) : ""}`;
         const html = svcDetails("tool-use", summary, inputStr, "language-json");
-        return entry("tool-use", name, ts, "tool", html, truncSvc(inputStr));
+        const full = cut.hit || inputStr.length > MAX_SVC ? () => JSON.stringify(b.input, null, 2) : null;
+        return entry("tool-use", name, ts, "tool", html, truncSvc(inputStr), full);
       }
 
       function toolResultEntry(b, ts) {
         const raw = b.content ?? ""; // tool_result may lack content entirely
         let text = "";
-        if (typeof raw === "string") text = raw;
-        else if (Array.isArray(raw)) text = joinBounded(raw);
-        else text = stringifyBounded(raw);
+        let full;
+        const cut = { hit: false };
+        if (typeof raw === "string") {
+          text = raw;
+          full = () => raw;
+        } else if (Array.isArray(raw)) {
+          text = joinBounded(raw, cut);
+          full = () =>
+            raw
+              .filter((x) => x != null)
+              .map((x) => (typeof x === "string" ? x : x.text || JSON.stringify(x, null, 2)))
+              .join("\n");
+        } else {
+          text = stringifyBounded(raw, cut);
+          full = () => JSON.stringify(raw, null, 2);
+        }
         const err = !!b.is_error;
         const lineCount = (text.match(/\n/g)?.length ?? 0) + 1;
         const summary = `${err ? "❌" : "📤"} result · ${L().lines(lineCount)} · ${L().chars(text.length)} · ${preview(text, 100)}`;
@@ -1263,6 +1990,7 @@
           "result",
           html,
           truncSvc(text),
+          cut.hit || text.length > MAX_SVC ? full : null,
         );
       }
 
@@ -1275,33 +2003,118 @@
         return `<details class="svc ${cls}"><summary>${summaryRaw}</summary><div class="content">${body}</div></details>`;
       }
 
-      function strContent(x) {
-        return x == null ? "" : typeof x === "string" ? x : stringifyBounded(x);
-      }
-
       // Cap per-string values during serialization — avoids materializing megabytes
       // of JSON that truncSvc would throw away on the next line.
-      function stringifyBounded(v) {
+      // cut (optional): set cut.hit = true when anything was dropped, so the entry
+      // can offer the full text.
+      function stringifyBounded(v, cut = null) {
         return JSON.stringify(
           v,
-          (_, val) =>
-            typeof val === "string" && val.length > MAX_SVC ? val.slice(0, MAX_SVC) + "…" : val,
+          (_, val) => {
+            if (typeof val !== "string" || val.length <= MAX_SVC) return val;
+            if (cut) cut.hit = true;
+            return val.slice(0, MAX_SVC) + "…";
+          },
           2,
         );
       }
 
-      function joinBounded(arr) {
+      function joinBounded(items, cut = null) {
         const parts = [];
         let used = 0;
-        for (const x of arr) {
+        for (let i = 0; i < items.length; i++) {
+          const x = items[i];
           if (x == null) continue;
-          const s = typeof x === "string" ? x : x.text || stringifyBounded(x);
+          const s = typeof x === "string" ? x : x.text || stringifyBounded(x, cut);
           parts.push(s);
           used += s.length + 1;
-          if (used > MAX_SVC * 2) break;
+          if (used > MAX_SVC * 2) {
+            if (cut && i < items.length - 1) cut.hit = true;
+            break;
+          }
         }
         return parts.join("\n");
       }
+
+      // ===== full-text panel =====
+      const MAX_PANEL_MD = 200_000; // above this marked would freeze the tab — text only
+      const panel = document.getElementById("full-panel");
+      const fpTitle = document.getElementById("fp-title");
+      const fpBody = document.getElementById("fp-body");
+      const fpModes = panel.querySelectorAll("[data-mode]");
+      const fpCopy = document.getElementById("fp-copy");
+      const fpSave = document.getElementById("fp-save");
+      const fpClose = document.getElementById("fp-close");
+      let panelState = null; // { text, rec, mode, opener }
+
+      function openPanel(entryEl, opener) {
+        const full = entryEl && fullTexts.get(entryEl);
+        if (!full) return;
+        const who = entryEl.querySelector(".hdr .who")?.textContent ?? "";
+        const tag = entryEl.querySelector(".hdr .tag")?.textContent ?? "";
+        panelState = { text: String(full() ?? ""), rec: recOf.get(entryEl), mode: "text", opener, who };
+        fpTitle.textContent = [who, tag].filter(Boolean).join(" · ");
+        renderPanel();
+        panel.showModal();
+      }
+
+      const panelText = () =>
+        panelState.mode === "json" ? JSON.stringify(panelState.rec ?? null, null, 2) : panelState.text;
+
+      function renderPanel() {
+        const tooBig = panelState.text.length > MAX_PANEL_MD;
+        for (const b of fpModes) b.setAttribute("aria-pressed", String(b.dataset.mode === panelState.mode));
+        const mdBtn = panel.querySelector('[data-mode="md"]');
+        mdBtn.disabled = tooBig;
+        mdBtn.title = tooBig ? L().mdTooBig : "";
+        panel.querySelector('[data-mode="json"]').disabled = panelState.rec === undefined;
+        if (panelState.mode === "md") {
+          fpBody.innerHTML = `<div class="prose">${md(panelState.text)}</div>`;
+        } else {
+          const pre = document.createElement("pre");
+          pre.textContent = panelText();
+          fpBody.replaceChildren(pre);
+        }
+        fpBody.scrollTop = 0;
+      }
+
+      function renderPanelLabels() {
+        const labels = { text: L().modeText, md: L().modeMd, json: L().modeJson };
+        for (const b of fpModes) b.textContent = labels[b.dataset.mode];
+        fpCopy.textContent = L().copyAll;
+        fpSave.textContent = L().saveFile;
+        fpClose.textContent = L().close;
+      }
+
+      for (const b of fpModes)
+        b.addEventListener("click", () => {
+          panelState.mode = b.dataset.mode;
+          renderPanel();
+        });
+      fpCopy.addEventListener("click", async () => {
+        if (!(await copyToClipboard(panelText()))) return;
+        fpCopy.textContent = "✓ " + L().copied;
+        setTimeout(() => (fpCopy.textContent = L().copyAll), 1200);
+      });
+      fpSave.addEventListener("click", () => {
+        const ext = { text: "txt", md: "md", json: "json" }[panelState.mode];
+        const base = `${state.fname.replace(/\.jsonl?$/i, "") || "transcript"}-${panelState.who}`;
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(new Blob([panelText()], { type: "text/plain;charset=utf-8" }));
+        a.download = `${base.replace(/[^\w.-]+/g, "_")}.${ext}`;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      });
+      fpClose.addEventListener("click", () => panel.close());
+      // A click on the backdrop lands on the <dialog> itself (its content fills the box).
+      panel.addEventListener("click", (e) => {
+        if (e.target === panel) panel.close();
+      });
+      panel.addEventListener("close", () => {
+        fpBody.replaceChildren(); // drop a possibly huge DOM right away
+        panelState?.opener?.focus();
+        panelState = null;
+      });
 
       function applyFilters() {
         for (const k of FILTERS) chatEl.classList.toggle("hide-" + k, !fbox[k].checked);
@@ -1360,6 +2173,7 @@
         storage.set("lang", locale);
         applyLocale();
         renderFilterLabels();
+        renderPanelLabels();
         if (state.fname) render(state.rows, state.fname, state.tri);
         else renderEmptyState();
       });
@@ -1380,6 +2194,7 @@
       readerBox.checked = savedReader;
       chatEl.classList.toggle("reader-mode", savedReader);
       renderFilterLabels();
+      renderPanelLabels();
       renderEmptyState();
     </script>
   </body>
