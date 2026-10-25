@@ -909,17 +909,27 @@
       // Without this, [text](...) and ![alt](...) in transcripts would fetch remote
       // resources on render and leak viewer usage to whoever crafted the transcript.
       const mdRenderer = new marked.Renderer();
+      // marked sees esc()-ed text, so href/title arrive with our entities; undo them
+      // before validating and escaping once — otherwise "&" in a URL became "&amp;".
+      const unesc = (s) =>
+        String(s ?? "")
+          .replace(/&lt;/g, "<")
+          .replace(/&gt;/g, ">")
+          .replace(/&quot;/g, '"')
+          .replace(/&#39;/g, "'")
+          .replace(/&amp;/g, "&");
       mdRenderer.image = function (href, title, text) {
-        const alt = esc(text || "image");
-        const url = href ? ` <span class="md-image-url">${esc(href)}</span>` : "";
+        const alt = esc(unesc(text || "image"));
+        const url = href ? ` <span class="md-image-url">${esc(unesc(href))}</span>` : "";
         return `<span class="md-image">🖼️ ${alt}${url}</span>`;
       };
       mdRenderer.link = function (href, title, text) {
         // Only http(s) links are clickable; other schemes (javascript:, data:, file:, mailto:)
         // are rendered as plain text. `text` is already escaped/rendered by marked.
-        if (!href || !/^https?:\/\//i.test(href)) return text;
-        const t = title ? ` title="${esc(title)}"` : "";
-        return `<a href="${esc(href)}" rel="noopener noreferrer nofollow" target="_blank"${t}>${text}</a>`;
+        const url = unesc(href);
+        if (!url || !/^https?:\/\//i.test(url)) return text;
+        const t = title ? ` title="${esc(unesc(title))}"` : "";
+        return `<a href="${esc(url)}" rel="noopener noreferrer nofollow" target="_blank"${t}>${text}</a>`;
       };
       marked.setOptions({ renderer: mdRenderer, breaks: true, gfm: true });
 
@@ -938,13 +948,21 @@
           (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
         );
       const fmtTime = (iso) => {
-        if (!iso) return "";
+        if (!iso || (typeof iso !== "string" && typeof iso !== "number")) return "";
         const d = new Date(iso);
         return isNaN(d.getTime()) ? "" : d.toLocaleString(DATE_LOCALES[locale], { hour12: false });
       };
       // XSS-safe: pre-escape HTML entities so marked only sees plain text with markdown syntax.
       // No raw HTML can reach innerHTML — no need for DOMPurify.
-      const md = (txt) => marked.parse(esc(txt || ""));
+      // marked can overflow its stack on pathological input (thousands of nested list
+      // markers) — fall back to escaped plain text so the entry keeps its place.
+      const md = (txt) => {
+        try {
+          return marked.parse(esc(txt || ""));
+        } catch {
+          return `<pre>${esc(txt || "")}</pre>`;
+        }
+      };
       const preview = (s, n = 100) => {
         const p = s.slice(0, n).replace(/\s+/g, " ").trim();
         return esc(p) + (s.length > n ? "…" : "");
@@ -1083,7 +1101,7 @@
         const asstIds = new Set();
         const newTypes = new Set();
         for (const r of rows) {
-          if (r?.timestamp) {
+          if (typeof r?.timestamp === "string" && r.timestamp) {
             firstTs ??= r.timestamp;
             lastTs = r.timestamp;
           }
@@ -1151,6 +1169,8 @@
           .map((x) => (typeof x === "string" ? x : JSON.stringify(x)))
           .join("\n");
       const baseName = (path) => String(path ?? "").split("/").pop();
+      // Keys of a plain object only — a string here would yield one key per character.
+      const objKeys = (o) => (o && typeof o === "object" && !Array.isArray(o) ? Object.keys(o) : []);
 
       const REMINDER_WRAP = /^<system-reminder>\n?([\s\S]*?)\n?<\/system-reminder>$/;
       // rendered[] (CLI 2.1.268+): the text the model actually saw for this record.
@@ -1246,7 +1266,7 @@
           body: (r) => ({ json: r.error ?? r }),
         },
         informational: {
-          icon: (r) => LEVEL_ICON[r.level] ?? "ℹ",
+          icon: (r) => (hasOwn(LEVEL_ICON, r.level) ? LEVEL_ICON[r.level] : "ℹ"),
           kind: (r) => (r.level === "error" ? "system error" : "system"),
           summary: (r) => clip(r.content, 120),
           body: (r) => (typeof r.content === "string" && r.content.length > 120 ? r.content : null),
@@ -1256,7 +1276,14 @@
 
       function commandSummary(content) {
         const s = typeof content === "string" ? content : "";
-        const pick = (tag) => s.match(new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`))?.[1]?.trim();
+        // indexOf, not a lazy regex: a wall of unclosed tags made the regex quadratic.
+        const pick = (tag) => {
+          const open = `<${tag}>`;
+          const i = s.indexOf(open);
+          if (i < 0) return undefined;
+          const j = s.indexOf(`</${tag}>`, i + open.length);
+          return j < 0 ? undefined : s.slice(i + open.length, j).trim();
+        };
         const name = pick("command-name");
         if (name) return joinDot(name, clip(pick("command-args"), 60));
         const out = pick("local-command-stdout");
@@ -1369,7 +1396,7 @@
         session_context: {
           icon: "🔒",
           sensitive: true,
-          summary: (a) => Object.keys(a.context ?? {}).join(", "),
+          summary: (a) => objKeys(a.context).join(", "),
         },
         environment: {
           icon: "🖥",
@@ -1477,7 +1504,7 @@
         },
         "file-history-snapshot": {
           icon: "💾",
-          summary: (r) => `${Object.keys(r.snapshot?.trackedFileBackups ?? {}).length} files`,
+          summary: (r) => `${objKeys(r.snapshot?.trackedFileBackups).length} files`,
           body: null,
         },
         "file-history-delta": { icon: "💾", summary: (r) => r.trackingPath, body: null },
@@ -1621,6 +1648,7 @@
       let state = { rows: [], idx: 0, fname: "", tri: null };
 
       function render(rows, fname, tri) {
+        if (panel.open) panel.close(); // a new file (e.g. dropped over the modal) replaces the old
         chatEl.innerHTML = "";
         state = { rows, idx: 0, fname, tri };
         statsEl.title = "";
@@ -1659,12 +1687,15 @@
           } catch (err) {
             // One broken record must not kill the rest of the chunk.
             console.warn("render error at record", i, err);
-            const dump = stringifyBounded(state.rows[i]);
+            const row = state.rows[i];
+            const dump = stringifyBounded(row);
+            // A chat message that fails to render stays visible in its own bucket.
+            const kind = row?.type === "user" || row?.type === "assistant" ? row.type : "ui";
             els = [
               entry(
-                "ui",
+                kind,
                 "error",
-                state.rows[i]?.timestamp,
+                row?.timestamp,
                 "⚠",
                 svcDetails("render-error", "json", dump, "language-json"),
                 truncSvc(dump),
@@ -1709,7 +1740,7 @@
         const isJson = s.body != null && typeof s.body === "object";
         const cut = { hit: false };
         const bodyText = s.body == null ? "" : isJson ? stringifyBounded(s.body.json, cut) : s.body;
-        const full = isJson ? () => JSON.stringify(s.body.json, null, 2) : () => s.body;
+        const full = isJson ? () => jsonFull(s.body.json) : () => s.body;
         if (s.prose) {
           const shown = trunc(bodyText);
           const html = `<div class="prose">${md(shown)}</div>`;
@@ -1936,7 +1967,7 @@
         Artifact: "🖼 Artifact",
         Monitor: "👁 Monitor",
       };
-      const friendlyToolName = (name) => TOOL_LABELS[name] || `🔧 ${name}`;
+      const friendlyToolName = (name) => (hasOwn(TOOL_LABELS, name) ? TOOL_LABELS[name] : `🔧 ${name}`);
 
       function toolUseEntry(b, ts) {
         const name = b.name || "tool";
@@ -1956,7 +1987,7 @@
             : "";
         const summary = `${esc(friendlyToolName(name))}${hint ? " · " + esc(hint) : ""}`;
         const html = svcDetails("tool-use", summary, inputStr, "language-json");
-        const full = cut.hit || inputStr.length > MAX_SVC ? () => JSON.stringify(b.input, null, 2) : null;
+        const full = cut.hit || inputStr.length > MAX_SVC ? () => jsonFull(b.input) : null;
         return entry("tool-use", name, ts, "tool", html, truncSvc(inputStr), full);
       }
 
@@ -1973,11 +2004,11 @@
           full = () =>
             raw
               .filter((x) => x != null)
-              .map((x) => (typeof x === "string" ? x : x.text || JSON.stringify(x, null, 2)))
+              .map((x) => (typeof x === "string" ? x : x.text || jsonFull(x)))
               .join("\n");
         } else {
           text = stringifyBounded(raw, cut);
-          full = () => JSON.stringify(raw, null, 2);
+          full = () => jsonFull(raw);
         }
         const err = !!b.is_error;
         const lineCount = (text.match(/\n/g)?.length ?? 0) + 1;
@@ -2008,16 +2039,28 @@
       // cut (optional): set cut.hit = true when anything was dropped, so the entry
       // can offer the full text.
       function stringifyBounded(v, cut = null) {
-        return JSON.stringify(
-          v,
-          (_, val) => {
-            if (typeof val !== "string" || val.length <= MAX_SVC) return val;
-            if (cut) cut.hit = true;
-            return val.slice(0, MAX_SVC) + "…";
-          },
-          2,
-        );
+        try {
+          return JSON.stringify(
+            v,
+            (_, val) => {
+              if (typeof val !== "string" || val.length <= MAX_SVC) return val;
+              if (cut) cut.hit = true;
+              return val.slice(0, MAX_SVC) + "…";
+            },
+            2,
+          );
+        } catch (err) {
+          // e.g. RangeError on absurdly deep nesting — this function backs every fallback
+          return `[unserializable: ${err.message}]`;
+        }
       }
+      const jsonFull = (v) => {
+        try {
+          return JSON.stringify(v, null, 2);
+        } catch (err) {
+          return `[unserializable: ${err.message}]`;
+        }
+      };
 
       function joinBounded(items, cut = null) {
         const parts = [];
@@ -2037,7 +2080,9 @@
       }
 
       // ===== full-text panel =====
-      const MAX_PANEL_MD = 200_000; // above this marked would freeze the tab — text only
+      // marked v12 is roughly quadratic: ~0.7 s at 30k chars of code, minutes at 200k
+      // on pathological input. Above this cap the panel offers plain text only.
+      const MAX_PANEL_MD = 30_000;
       const panel = document.getElementById("full-panel");
       const fpTitle = document.getElementById("fp-title");
       const fpBody = document.getElementById("fp-body");
@@ -2058,8 +2103,7 @@
         panel.showModal();
       }
 
-      const panelText = () =>
-        panelState.mode === "json" ? JSON.stringify(panelState.rec ?? null, null, 2) : panelState.text;
+      const panelText = () => (panelState.mode === "json" ? jsonFull(panelState.rec ?? null) : panelState.text);
 
       function renderPanel() {
         const tooBig = panelState.text.length > MAX_PANEL_MD;

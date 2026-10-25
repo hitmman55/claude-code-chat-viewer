@@ -161,3 +161,38 @@ test("computeStats lists record types that have no rule", () => {
     "system:future_sub",
   ]);
 });
+
+// --- adversarial review of c030c13 ---
+
+test("local_command summary stays linear on a wall of unclosed tags", () => {
+  const content = "<command-name>".repeat(40000);
+  const t0 = performance.now();
+  T.describeRecord({ type: "system", subtype: "local_command", content });
+  assert.ok(performance.now() - t0 < 500, "commandSummary must not backtrack");
+});
+
+test("local_command summary still extracts name and args", () => {
+  const s = T.describeRecord({
+    type: "system",
+    subtype: "local_command",
+    content: "<command-name>/rename</command-name>\n<command-args>viewer</command-args>",
+  });
+  assert.equal(s.summary, "/rename · viewer");
+});
+
+test("object-shaped fields given as strings are not split into characters", () => {
+  const big = "x".repeat(2_000_000);
+  const t0 = performance.now();
+  const snap = T.describeRecord({ type: "file-history-snapshot", snapshot: { trackedFileBackups: big } });
+  const ctx = T.describeRecord({ type: "attachment", attachment: { type: "session_context", context: "abc" } });
+  assert.ok(performance.now() - t0 < 500);
+  assert.equal(snap.summary, "0 files");
+  assert.equal(ctx.summary, null);
+});
+
+test("prototype keys never leak into badges", () => {
+  for (const level of ["constructor", "__proto__", "toString"]) {
+    const s = T.describeRecord({ type: "system", subtype: "informational", level, content: "x" });
+    assert.ok(!/function|\[object/.test(s.tag), s.tag);
+  }
+});
