@@ -7,6 +7,10 @@
    "nAsst": 15,
    "nService": 9,
    "newTypes": [],
+   "hidden": {
+    "permission-mode": 1,
+    "queue-operation": 2
+   },
    "bad": 0,
    "dups": 0,
    "apiReq": 0
@@ -260,6 +264,15 @@
     "future-record",
     "system:future_subtype"
    ],
+   "hidden": {
+    "agent-setting": 1,
+    "atis-latch": 1,
+    "attachment:credential_org": 1,
+    "attachment:task_reminder": 1,
+    "attachment:total_tokens_reminder": 1,
+    "last-prompt": 1,
+    "mode": 1
+   },
    "bad": 1,
    "dups": 0,
    "apiReq": 1

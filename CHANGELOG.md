@@ -16,6 +16,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - **Model fallback** inside a reply (`claude-fable-5 → claude-opus-4-8`) is shown as a system line; before, it was dropped.
 - A tool reference in a result (after `ToolSearch`) reads `🔎 tool loaded: WebFetch` instead of raw JSON.
 - The stats line counts broken lines, and `? N new record types` also lists content blocks this version doesn't know (`content:<type>`).
+- **Search in the session** — `/`, words or `"a phrase"`, Enter / Shift+Enter or `n` / `N`, "only mine"; a hit beyond the loaded chunks is drawn on the way.
+- **Tool runs** — with the Tools filter off, each run of tool calls between messages is one line: count and the tools used.
+- **`hidden N`** in the stats line — records hidden on purpose (repeats of a value, delivered queue items, empty reminders) are counted, with the kinds on hover.
 - README: "How it differs", and how to read transcripts when Claude Code runs on a server (mounted drive or copy).
 
 ### Fixed
@@ -27,11 +30,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Cutting a long text no longer splits an emoji in half.
 - "Save file" keeps non-Latin letters in the file name (it used to turn `сессия.jsonl` into `_.txt`).
 - Notices such as "Reading…" follow a language switch.
+- A language switch with many chunks loaded no longer freezes the page for the whole file: the chunks up to the entry on screen are drawn at once, the rest in the background (200 MB, everything loaded: 5.8 s → 1.7 s with the reader at the first quarter).
+- Text the CLI marks as typed by a human (`promptSource`) is the human's message even when it looks like a CLI marker, e.g. a pasted `[Request interrupted by user]`.
 - Links in a transcript no longer let the browser resolve their host names in advance (DNS prefetch is off).
 
 ### Changed
 
-- README, known limits: the measured size instead of "~100 MB" — 200 MB opens in ~3 s.
+- README, known limits: the measured size instead of "~100 MB" — 200 MB opens in ~3 s; reading it to the end costs ~40 s and ~1 GB.
 
 ## [0.1.2] — 2026-10-26
 

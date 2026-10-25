@@ -557,6 +557,37 @@
       main.hide-tools .e.tool-use {
         display: none;
       }
+      /* with tool calls hidden, each run of them leaves one line: how many and which */
+      .e.toolrun {
+        --bar: var(--c-tool);
+        display: none;
+        color: var(--muted);
+      }
+      main.hide-tools:not(.reader-mode) .e.toolrun {
+        display: grid;
+      }
+      mark.hit {
+        background: rgba(255, 196, 0, 0.35);
+        color: inherit;
+      }
+      mark.hit.cur {
+        background: #ffb300;
+        color: #000;
+      }
+      #searchbar {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+      }
+      #search {
+        width: 14em;
+        max-width: 40vw;
+      }
+      #search-count {
+        color: var(--muted);
+        white-space: nowrap;
+      }
       main.hide-results .e.tool-result {
         display: none;
       }
@@ -605,6 +636,11 @@
         <label><input type="checkbox" id="f-ui" /> <span class="f-label" data-k="ui"></span></label>
       </div>
       <label><input type="checkbox" id="reader-mode" /> <span id="reader-mode-label"></span></label>
+      <span id="searchbar">
+        <input type="search" id="search" autocomplete="off" />
+        <label><input type="checkbox" id="search-mine" /> <span id="search-mine-label"></span></label>
+        <span id="search-count"></span>
+      </span>
       <select id="lang" title="Language">
         <option value="en">English</option>
         <option value="ru">Русский</option>
@@ -689,6 +725,14 @@
           copy: "Copy",
           copied: "Copied!",
           tryExample: "Try with example",
+          hidden: (n) => `hidden ${n}`,
+          hiddenTitle: "Hidden on purpose — repeats of a value, delivered queue items, empty reminders:",
+          searchPlaceholder: "Search — Enter / Shift+Enter, press / to focus",
+          searchMine: "only mine",
+          searchAt: (k, n) => `${k} of ${n}`,
+          searchFound: (n) => `${n} found`,
+          searchNone: "not found",
+          toolRun: "tool calls",
           badLines: (n) => `broken lines skipped: ${n}`,
           copyResume: "Copy the command that resumes this session",
           tokens: (i, o) => `tokens ↑${i} ↓${o}`,
@@ -735,6 +779,14 @@
           copy: "Скопировать",
           copied: "Скопировано!",
           tryExample: "Открыть пример",
+          hidden: (n) => `скрыто ${n}`,
+          hiddenTitle: "Скрыто намеренно — повторы значения, доставленные из очереди, пустые напоминания:",
+          searchPlaceholder: "Поиск — Enter / Shift+Enter, «/» — перейти сюда",
+          searchMine: "только мои",
+          searchAt: (k, n) => `${k} из ${n}`,
+          searchFound: (n) => `найдено ${n}`,
+          searchNone: "не найдено",
+          toolRun: "вызовы инструментов",
           badLines: (n) => `пропущено битых строк: ${n}`,
           copyResume: "Скопировать команду, которая продолжит эту сессию",
           tokens: (i, o) => `токенов ↑${i} ↓${o}`,
@@ -781,6 +833,14 @@
           copy: "Copiar",
           copied: "¡Copiado!",
           tryExample: "Probar con ejemplo",
+          hidden: (n) => `ocultos ${n}`,
+          hiddenTitle: "Ocultos a propósito — repeticiones de un valor, elementos de la cola ya entregados, recordatorios vacíos:",
+          searchPlaceholder: "Buscar — Enter / Mayús+Enter, «/» para enfocar",
+          searchMine: "solo míos",
+          searchAt: (k, n) => `${k} de ${n}`,
+          searchFound: (n) => `${n} encontrados`,
+          searchNone: "sin resultados",
+          toolRun: "llamadas a herramientas",
           badLines: (n) => `líneas dañadas omitidas: ${n}`,
           copyResume: "Copiar el comando que reanuda esta sesión",
           tokens: (i, o) => `tokens ↑${i} ↓${o}`,
@@ -828,6 +888,14 @@
           copy: "Copier",
           copied: "Copié !",
           tryExample: "Essayer avec l'exemple",
+          hidden: (n) => `masqués ${n}`,
+          hiddenTitle: "Masqués exprès — répétitions d’une valeur, éléments de file déjà livrés, rappels vides :",
+          searchPlaceholder: "Rechercher — Entrée / Maj+Entrée, « / » pour y aller",
+          searchMine: "seulement les miens",
+          searchAt: (k, n) => `${k} sur ${n}`,
+          searchFound: (n) => `${n} trouvés`,
+          searchNone: "introuvable",
+          toolRun: "appels d’outils",
           badLines: (n) => `lignes illisibles ignorées : ${n}`,
           copyResume: "Copier la commande qui reprend cette session",
           tokens: (i, o) => `jetons ↑${i} ↓${o}`,
@@ -874,6 +942,14 @@
           copy: "复制",
           copied: "已复制!",
           tryExample: "试用示例",
+          hidden: (n) => `已隐藏 ${n}`,
+          hiddenTitle: "有意隐藏——重复的值、已送达的队列项、空提醒：",
+          searchPlaceholder: "搜索 — Enter / Shift+Enter，按 “/” 聚焦",
+          searchMine: "只看我的",
+          searchAt: (k, n) => `第 ${k} / ${n}`,
+          searchFound: (n) => `找到 ${n}`,
+          searchNone: "未找到",
+          toolRun: "工具调用",
           badLines: (n) => `已跳过损坏的行：${n}`,
           copyResume: "复制继续此会话的命令",
           tokens: (i, o) => `Token ↑${i} ↓${o}`,
@@ -920,6 +996,14 @@
           copy: "نسخ",
           copied: "تم النسخ!",
           tryExample: "جرّب مثالاً",
+          hidden: (n) => `مخفية ${n}`,
+          hiddenTitle: "مخفية عمدًا — تكرار القيمة، عناصر الطابور المسلَّمة، التذكيرات الفارغة:",
+          searchPlaceholder: "بحث — Enter / Shift+Enter، و«/» للانتقال إليه",
+          searchMine: "رسائلي فقط",
+          searchAt: (k, n) => `${k} من ${n}`,
+          searchFound: (n) => `وُجد ${n}`,
+          searchNone: "لا نتائج",
+          toolRun: "استدعاءات الأدوات",
           badLines: (n) => `أسطر تالفة تم تخطيها: ${n}`,
           copyResume: "انسخ الأمر الذي يستأنف هذه الجلسة",
           tokens: (i, o) => `رموز ↑${i} ↓${o}`,
@@ -986,6 +1070,9 @@
       const chatEl = document.getElementById("chat");
       const statsEl = document.getElementById("stats");
       const resumeBtn = document.getElementById("resume");
+      const searchEl = document.getElementById("search");
+      const searchMineEl = document.getElementById("search-mine");
+      const searchCountEl = document.getElementById("search-count");
       document.getElementById("version").textContent = `v${VERSION}`;
       const fileEl = document.getElementById("file");
       const emptyEl = document.getElementById("emptyState");
@@ -1039,8 +1126,7 @@
       marked.setOptions({ renderer: mdRenderer, breaks: true, gfm: true });
 
       // ===== truncation =====
-      const MAX_PROSE = 20_000;
-      const MAX_SVC = 5_000;
+      // MAX_PROSE / MAX_SVC live in the triage section: search reads the same bounds.
       const cut = (s, max) =>
         !s ? "" : s.length <= max ? s : safeSlice(s, max) + `\n\n… [${L().cut(s.length - max)}]`;
       const trunc = (s) => cut(s, MAX_PROSE);
@@ -1089,6 +1175,8 @@
         statsEl.textContent = "";
         statsEl.title = "";
         resumeBtn.hidden = true;
+        searchCountEl.textContent = "";
+        search = { terms: [], hits: [], cur: -1, gen: search.gen + 1, ready: Promise.resolve() };
         chatEl.innerHTML = `<div class="empty">${html()}</div>`;
       }
 
@@ -1166,6 +1254,9 @@
       // tool schemas, user paths — up to half the file and not part of the conversation.
       // They are dropped before JSON.parse; "type" is always the first key.
       const API_LOG_PREFIX = '{"type":"api-request';
+      // How much of a block the feed shows: prose (messages) and service blocks.
+      const MAX_PROSE = 20_000;
+      const MAX_SVC = 5_000;
       // Any value of a record as text. String() throws on an object whose toString is
       // not a function ({"toString":1} is valid JSON) — one such field killed the file.
       const toStr = (x) => {
@@ -1240,6 +1331,7 @@
         // One API response is written as several lines (one per content block).
         const asstIds = new Set();
         const newTypes = new Set();
+        const hidden = {}; // kind → count of records hidden on purpose (repeats, delivered queue…)
         for (const r of rows) {
           if (typeof r?.timestamp === "string" && r.timestamp) {
             firstTs ??= r.timestamp;
@@ -1251,6 +1343,7 @@
             for (const it of t === "user" ? planUserRecord(r, idx) : planAssistantRecord(r))
               if (it.type === "unknown" && typeof it.block?.type === "string" && !KNOWN_BLOCKS.has(it.block.type))
                 newTypes.add(`content:${clip(it.block.type, 40)}`);
+          if (t === "user" && r.uuid && idx.compactEchoes.has(r.uuid)) hidden["/compact echo"] = (hidden["/compact echo"] ?? 0) + 1;
           if (t === "user") {
             // Same plan as the feed: wrappers, markers and echoes are not messages; a reply
             // typed while a tool ran sits next to its tool_result and is one.
@@ -1270,6 +1363,11 @@
               s = describeRecord(r, idx);
             } catch {} // the feed shows such a record as an error card, not a message
             if (s && !s.hide && s.kind === "user" && s.prose) nUser++;
+            if (s?.hide) {
+              const [, sub] = ruleTable(r);
+              const key = t === "system" || t === "attachment" ? `${t}:${toStr(sub)}` : toStr(sub ?? t);
+              hidden[key] = (hidden[key] ?? 0) + 1;
+            }
           }
         }
         return {
@@ -1279,6 +1377,7 @@
           nAsst: asstIds.size + nAsstAnon,
           nService,
           newTypes: [...newTypes].sort(),
+          hidden: Object.fromEntries(Object.entries(hidden).sort()),
         };
       }
       // ===== end triage =====
@@ -1926,6 +2025,138 @@
         return { input, output };
       }
 
+      // A run of tool calls between two messages as one line: "6 · Read ×3 · Bash ×2 · Grep".
+      function toolRunLabel(names) {
+        const counts = new Map();
+        for (const n of names) counts.set(n, (counts.get(n) ?? 0) + 1);
+        const top = [...counts].sort((a, b) => b[1] - a[1]);
+        const shown = top.slice(0, 4).map(([n, c]) => (c > 1 ? `${n} ×${c}` : n));
+        if (top.length > 4) shown.push(`+${top.length - 4}`);
+        return [String(names.length), ...shown].join(" · ");
+      }
+
+      // Known Claude Code tools get friendly label + emoji. Unknown (e.g. MCP tools
+      // prefixed with mcp__) fall back to raw name with a generic wrench.
+      const TOOL_LABELS = {
+        Read: "📖 Read file",
+        Write: "✏️ Write file",
+        Edit: "📝 Edit file",
+        MultiEdit: "📝 Multi-edit",
+        NotebookEdit: "📓 Notebook edit",
+        Bash: "🖥️ Shell",
+        Glob: "🔎 Find files",
+        Grep: "🔍 Search code",
+        WebFetch: "🌐 Fetch URL",
+        WebSearch: "🔍 Web search",
+        Task: "🤖 Subagent",
+        Agent: "🤖 Subagent",
+        TodoWrite: "☑️ Update todos",
+        Skill: "⭐ Skill",
+        SlashCommand: "⚡ Slash command",
+        ToolSearch: "🔎 Tool search",
+        SendMessage: "✉️ Message agent",
+        AskUserQuestion: "❓ Ask user",
+        ScheduleWakeup: "⏰ Schedule wakeup",
+        ListAgents: "🤖 List agents",
+        TaskCreate: "☑️ Create task",
+        TaskUpdate: "☑️ Update task",
+        TaskStop: "⏹ Stop task",
+        TaskOutput: "📤 Task output",
+        StructuredOutput: "🧩 Structured output",
+        CronCreate: "⏰ Create cron",
+        CronDelete: "⏰ Delete cron",
+        EnterPlanMode: "📝 Enter plan mode",
+        ExitPlanMode: "📝 Exit plan mode",
+        EnterWorktree: "🌿 Enter worktree",
+        ExitWorktree: "🌿 Exit worktree",
+        Workflow: "🔀 Workflow",
+        Artifact: "🖼 Artifact",
+        Monitor: "👁 Monitor",
+      };
+      const friendlyToolName = (name) => (hasOwn(TOOL_LABELS, name) ? TOOL_LABELS[name] : `🔧 ${name}`);
+
+      // ----- search in a session -----
+      // Case folding that keeps the length (İ lower-cases to two characters otherwise),
+      // so a position found in the folded text is the position in the text itself.
+      const fold = (s) => toStr(s).replace(/\u0130/g, "I").toLowerCase();
+      // Words match in any order; "a quoted phrase" is one term. Case-insensitive, any script.
+      function searchTerms(q) {
+        const terms = [];
+        for (const m of toStr(q).matchAll(/"([^"]*)"|(\S+)/g)) {
+          const t = fold((m[1] ?? m[2]).trim().replace(/\s+/g, " "));
+          if (t) terms.push(t);
+        }
+        return terms;
+      }
+      const textMatches = (text, terms) => {
+        if (!terms.length) return false;
+        const low = fold(text).replace(/\s+/g, " ");
+        return terms.every((t) => low.includes(t));
+      };
+      // Which entry kinds the filters show — the same table as the CSS rules
+      // main.hide-<filter> .e.<class> and main.reader-mode (keep the two in step).
+      const FILTER_CLASSES = {
+        thinking: ["thinking"],
+        tools: ["tool-use"],
+        results: ["tool-result"],
+        system: ["system", "meta", "task-note"],
+        ui: ["ui"],
+        hooks: ["hook"],
+      };
+      function kindVisible(kind, f) {
+        const cls = toStr(kind).split(/\s+/);
+        if (f.reader) return cls.includes("divider") || ((cls.includes("user") || cls.includes("assistant")) && !cls.includes("toolrun"));
+        return !Object.entries(FILTER_CLASSES).some(([k, cs]) => !f[k] && cs.some((c) => cls.includes(c)));
+      }
+      // The blocks of a record as the feed draws them: { kind, text } each, text bounded
+      // as the entry shows it. One block = one possible hit.
+      function rowSearchParts(r, idx) {
+        const out = [];
+        const add = (kind, text, max) => {
+          const t = toStr(text);
+          if (t) out.push({ kind, text: t.length > max ? safeSlice(t, max) : t });
+        };
+        const spec = (s) => s && !s.hide && add(s.kind + (s.divider ? " divider" : ""), joinDot(s.summary, typeof s.body === "string" ? s.body : s.body?.json != null ? toStr(s.body.json) : null), s.prose ? MAX_PROSE : MAX_SVC);
+        if (r?.type === "user") {
+          const plan = planUserRecord(r, idx);
+          const tur = plan.filter((it) => it.type === "result").length === 1 ? r.toolUseResult : null;
+          for (const it of plan) {
+            if (it.type === "result") {
+              const b = it.block;
+              const c = b.content ?? "";
+              const text = typeof c === "string" ? c : arr(c).filter((x) => x != null).map((x) => blockText(x, toStr)).join("\n");
+              const p = b.is_error ? null : patchView(tur);
+              const kind = "tool-result" + (b.is_error ? " error" : "");
+              if (p) add(kind, `${p.lines.map((l) => l.s).join("\n").slice(0, MAX_SVC)}\n${safeSlice(text, 100)}`, MAX_SVC + 101);
+              else add(kind, text, MAX_SVC);
+            } else if (it.type === "images") add(it.meta ? "meta" : "user", it.blocks.map((b) => imageInfo(b).label).join("\n"), MAX_SVC);
+            else if (it.type === "unknown") add("ui", toStr(it.block), MAX_SVC);
+            else if (!it.spec) add("user", it.text, MAX_PROSE);
+            else if (it.spec.legacy === "meta") add("meta", it.text, MAX_SVC);
+            else if (it.spec.legacy === "task") add("task-note", it.text, MAX_SVC);
+            else spec(it.spec);
+          }
+        } else if (r?.type === "assistant") {
+          for (const it of planAssistantRecord(r)) {
+            if (it.type === "text") add("assistant", it.text, MAX_PROSE);
+            else if (it.type === "thinking") add("thinking", it.text, MAX_SVC);
+            else if (it.type === "tool_use") {
+              const b = it.block;
+              const s = describeTool(b, idx);
+              if (s) spec(s);
+              else {
+                // the card header shows the first two arguments raw; its body, the JSON
+                const i = b.input && typeof b.input === "object" ? b.input : {};
+                const hint = taskHint(b, idx) ?? Object.entries(i).slice(0, 2).map(([k, v]) => `${k}=${safeSlice(toStr(v), 40)}`).join(" · ");
+                add("tool-use", `${friendlyToolName(b.name)} · ${hint}\n${safeSlice(toStr(b.input), MAX_SVC)}`, MAX_SVC * 2);
+              }
+            } else if (it.type === "fallback") add("system", it.summary, MAX_SVC);
+            else add("ui", toStr(it.block), MAX_SVC);
+          }
+        } else if (r && typeof r === "object") spec(describeRecord(r, idx));
+        return out;
+      }
+
       // Background subagents (async_launched) report their totals in the finish
       // notification: <usage> as tags or "key: N" lines, subagent_ or total_tokens.
       function taskNoteSummary(t) {
@@ -2106,8 +2337,10 @@
         // first record of a subagent transcript: the prompt the parent passed to Agent
         if (r.isSidechain === true && !r.parentUuid && !meta) return parentTask(text);
         const t = text.trim();
-        if (INTERRUPTED.has(t)) return { kind: "meta", who: "user", tag: "⛔ interrupted", summary: t, body: null };
         if (/^\/compact(\s|$)/.test(t) && idx?.compactEchoes.has(r.uuid)) return { hide: true };
+        // The CLI marks what a human typed (or queued); no text pattern overrules that.
+        if ((r.promptSource === "typed" || r.promptSource === "queued") && !meta) return null;
+        if (INTERRUPTED.has(t)) return { kind: "meta", who: "user", tag: "⛔ interrupted", summary: t, body: null };
         if (meta && t === CONTINUE_MARKER)
           return { kind: "meta", who: "inject", tag: "▶ continue", summary: "resume continuation", body: null };
         if (meta && t.startsWith(AGENT_MSG_PREFIX)) return reportSpec(t, idx);
@@ -2449,8 +2682,9 @@
       function render(rows, fname, tri) {
         if (panel.open) panel.close(); // a new file (e.g. dropped over the modal) replaces the old
         noticeHtml = null;
+        renderGen++;
         chatEl.innerHTML = "";
-        state = { rows, idx: 0, fname, tri };
+        state = { rows, idx: 0, fname, tri, run: null };
         statsEl.title = "";
         if (!rows.length) {
           statsEl.textContent = tri?.apiReq
@@ -2460,7 +2694,7 @@
           return;
         }
         const index = buildIndex(rows);
-        const { firstTs, lastTs, nUser, nAsst, nService, newTypes } = computeStats(rows, index);
+        const { firstTs, lastTs, nUser, nAsst, nService, newTypes, hidden } = computeStats(rows, index);
         const parts = [
           fname,
           `${rows.length} ${L().records} (${L().service(nService)})`,
@@ -2472,10 +2706,13 @@
         if (tri?.apiReq) parts.push(L().apiLog(tri.apiReq, (tri.apiBytes / 1048576).toFixed(1)));
         // Types the rule tables don't know yet — the early signal of a format change.
         if (newTypes.length) parts.push(L().newTypes(newTypes.length));
+        const hid = Object.entries(hidden);
+        const nHidden = hid.reduce((a, [, n]) => a + n, 0);
+        if (nHidden) parts.push(L().hidden(nHidden));
         const usage = sessionUsage(rows);
         if (usage) parts.push(L().tokens(fmtK(usage.input), fmtK(usage.output)));
         statsEl.textContent = parts.join(" · ");
-        statsEl.title = newTypes.join("\n");
+        statsEl.title = [...newTypes, ...(nHidden ? [L().hiddenTitle, ...hid.map(([k, n]) => `${k} ×${n}`)] : [])].join("\n");
         const resume = resumeCommand(rows);
         resumeBtn.hidden = !resume;
         resumeBtn.title = resume ? `${L().copyResume}:\n${resume}` : "";
@@ -2483,32 +2720,66 @@
         state.index = index;
         renderChunk();
         applyFilters();
+        runSearch();
       }
 
       // Re-render the same file (language switch) without losing the reader's place:
-      // as many records as were loaded, the same blocks open, the same entry on top.
+      // as many records as were loaded, the same blocks open, the same entry on top. Only
+      // the chunks up to that entry are drawn at once; the rest follow frame by frame.
+      let renderGen = 0;
       function rerender() {
         const els = [...chatEl.querySelectorAll(".e")];
         const top = els.findIndex((e) => e.getBoundingClientRect().bottom > 0);
         const offset = top >= 0 ? els[top].getBoundingClientRect().top : 0;
         const open = []; // [entry index, details index within the entry]
         els.forEach((e, i) => e.querySelectorAll("details").forEach((d, j) => d.open && open.push([i, j])));
+        // a tool-run line has no record of its own: anchor on the next entry that has one
+        const anchorRow = top >= 0 ? els.slice(top).map((e) => recOf.get(e)).find(Boolean) ?? null : null;
+        const anchorIdx = anchorRow ? state.rows.indexOf(anchorRow) : -1;
         const upto = state.idx;
         render(state.rows, state.fname, state.tri);
-        while (state.idx < upto) renderChunk();
-        const now = [...chatEl.querySelectorAll(".e")];
-        for (const [i, j] of open) {
-          const d = now[i]?.querySelectorAll("details")[j];
-          if (d) d.open = true;
-        }
+        const gen = renderGen;
+        while (state.idx <= anchorIdx && state.idx < upto) renderChunk();
+        const reopen = (from = 0) => {
+          const now = [...chatEl.querySelectorAll(".e")];
+          for (const [i, j] of open) {
+            if (i < from) continue; // drawn earlier: the human may have closed it since
+            const d = now[i]?.querySelectorAll("details")[j];
+            if (d && !d.open) d.open = true;
+          }
+          return now;
+        };
+        const now = reopen();
+        const drawn = now.length; // entries the sync part drew; later ones open in the background
         // Off-screen entries get their real height only once laid out (content-visibility),
         // so the anchor drifts for a couple of frames — correct it again after each.
-        const fix = () => now[top] && window.scrollBy(0, now[top].getBoundingClientRect().top - offset);
+        let moved = false;
+        let lastY = null; // where our own correction left the page: anything else is the human
+        const watch = new AbortController(); // dropped once the chunks are in: no stale entries held
+        for (const ev of ["wheel", "keydown", "pointerdown", "touchstart"])
+          addEventListener(ev, () => (moved = true), { passive: true, signal: watch.signal });
+        const fix = () => {
+          if (moved || !now[top]) return;
+          if (lastY !== null && Math.abs(scrollY - lastY) > 2) return void (moved = true);
+          window.scrollBy(0, now[top].getBoundingClientRect().top - offset);
+          lastY = scrollY;
+        };
         fix();
         requestAnimationFrame(() => {
           fix();
           requestAnimationFrame(fix);
         });
+        const more = () => {
+          if (gen !== renderGen) return watch.abort(); // another file or render took over
+          if (state.idx >= upto) {
+            watch.abort();
+            return void reopen(drawn);
+          }
+          renderChunk();
+          fix(); // the human hasn't scrolled: keep the anchor in place while chunks arrive
+          requestAnimationFrame(more);
+        };
+        requestAnimationFrame(more);
       }
 
       function renderChunk() {
@@ -2537,8 +2808,19 @@
               ),
             ];
           }
+          elsOf.set(state.rows[i], els);
           for (const el of els) {
             recOf.set(el, state.rows[i]);
+            // a run of tool calls between messages gets one summary line (shown when tools are hidden)
+            if (el.classList.contains("tool-use")) {
+              if (!state.run) {
+                const line = entry("toolrun", L().toolRun, state.rows[i].timestamp, "🔧", `<div class="line"></div>`);
+                state.run = { el: line, names: [] };
+                frag.appendChild(line);
+              }
+              state.run.names.push(el.querySelector(".hdr .who")?.textContent || "tool");
+              state.run.el.querySelector(".line").textContent = toolRunLabel(state.run.names);
+            } else if (el.classList.contains("user") || el.classList.contains("assistant")) state.run = null;
             frag.appendChild(el);
           }
         }
@@ -2670,6 +2952,7 @@
       // built only when the panel opens. recOf: entry element → its source record.
       const fullTexts = new WeakMap();
       const recOf = new WeakMap();
+      const elsOf = new WeakMap(); // record → its entries, for search
 
       function entry(kind, who, ts, tag, innerHTML, copyText = null, full = null) {
         const el = document.createElement("div");
@@ -2773,45 +3056,6 @@
         return entry("task-note", "task", ts, "📣", html, shown, text.length > MAX_SVC ? () => text : null);
       }
 
-      // Known Claude Code tools get friendly label + emoji. Unknown (e.g. MCP tools
-      // prefixed with mcp__) fall back to raw name with a generic wrench.
-      const TOOL_LABELS = {
-        Read: "📖 Read file",
-        Write: "✏️ Write file",
-        Edit: "📝 Edit file",
-        MultiEdit: "📝 Multi-edit",
-        NotebookEdit: "📓 Notebook edit",
-        Bash: "🖥️ Shell",
-        Glob: "🔎 Find files",
-        Grep: "🔍 Search code",
-        WebFetch: "🌐 Fetch URL",
-        WebSearch: "🔍 Web search",
-        Task: "🤖 Subagent",
-        Agent: "🤖 Subagent",
-        TodoWrite: "☑️ Update todos",
-        Skill: "⭐ Skill",
-        SlashCommand: "⚡ Slash command",
-        ToolSearch: "🔎 Tool search",
-        SendMessage: "✉️ Message agent",
-        AskUserQuestion: "❓ Ask user",
-        ScheduleWakeup: "⏰ Schedule wakeup",
-        ListAgents: "🤖 List agents",
-        TaskCreate: "☑️ Create task",
-        TaskUpdate: "☑️ Update task",
-        TaskStop: "⏹ Stop task",
-        TaskOutput: "📤 Task output",
-        StructuredOutput: "🧩 Structured output",
-        CronCreate: "⏰ Create cron",
-        CronDelete: "⏰ Delete cron",
-        EnterPlanMode: "📝 Enter plan mode",
-        ExitPlanMode: "📝 Exit plan mode",
-        EnterWorktree: "🌿 Enter worktree",
-        ExitWorktree: "🌿 Exit worktree",
-        Workflow: "🔀 Workflow",
-        Artifact: "🖼 Artifact",
-        Monitor: "👁 Monitor",
-      };
-      const friendlyToolName = (name) => (hasOwn(TOOL_LABELS, name) ? TOOL_LABELS[name] : `🔧 ${name}`);
 
       function toolUseEntry(b, ts) {
         const name = b.name || "tool";
@@ -3117,7 +3361,159 @@
             local.toLowerCase() === base.toLowerCase() ? local : `${local} (${base})`;
         }
         readerLabel.textContent = L().readerMode;
+        searchEl.placeholder = L().searchPlaceholder;
+        searchEl.title = L().searchPlaceholder;
+        document.getElementById("search-mine-label").textContent = L().searchMine;
       }
+
+      // ===== search in the open session =====
+      // A hit is one block of the feed (rowSearchParts) that the filters show and that
+      // holds every term. A record not drawn yet is drawn when the human goes to it.
+      let search = { terms: [], hits: [], cur: -1, gen: 0, ready: Promise.resolve() };
+      let searchTimer = 0;
+      const filterState = () => ({ ...Object.fromEntries(FILTERS.map((k) => [k, fbox[k].checked])), reader: readerBox.checked });
+      function clearMarks() {
+        for (const m of chatEl.querySelectorAll("mark.hit")) {
+          const parent = m.parentNode;
+          m.replaceWith(document.createTextNode(m.textContent));
+          parent.normalize();
+        }
+      }
+      function runSearch() {
+        clearMarks();
+        const terms = searchTerms(searchEl.value);
+        const gen = search.gen + 1;
+        search = { terms, hits: [], cur: -1, gen, ready: Promise.resolve() };
+        searchCountEl.textContent = "";
+        if (!terms.length || !state.rows.length) return;
+        const f = filterState();
+        const mine = searchMineEl.checked;
+        const rows = state.rows;
+        const hits = search.hits;
+        // a slice of records per task, so typing never blocks the page for long
+        search.ready = (async () => {
+          for (let i = 0; i < rows.length; i++) {
+            if (i % 2000 === 1999) {
+              await new Promise((r) => setTimeout(r));
+              if (gen !== search.gen) return;
+            }
+            const r = rows[i];
+            let parts = [];
+            try {
+              parts = rowSearchParts(r, state.index);
+            } catch {} // a record the feed can't describe is an error card, not a hit
+            let k = 0;
+            for (const p of parts) {
+              if (!kindVisible(p.kind, f) || (mine && p.kind !== "user")) continue;
+              if (textMatches(p.text, terms)) hits.push({ row: i, k: k++ });
+            }
+          }
+          if (gen === search.gen) searchCountEl.textContent = hits.length ? L().searchFound(hits.length) : L().searchNone;
+        })();
+      }
+      // the entry without its header (who, tag, time) — what a hit can be in
+      const bodyNodes = (el) => [...(el.querySelector(".body")?.children ?? [])].filter((c) => !c.classList.contains("hdr"));
+      const bodyText = (el) => bodyNodes(el).map((c) => c.textContent).join(" ");
+      function markIn(el, terms) {
+        const marks = [];
+        const mark = (words) => {
+          const res = words.map((t) => new RegExp(t.split(" ").map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("\\s+"), "g"));
+          for (const root of bodyNodes(el)) {
+            const walk = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+            const nodes = [];
+            while (walk.nextNode()) nodes.push(walk.currentNode);
+            for (const node of nodes) {
+              const text = node.nodeValue;
+              const low = fold(text); // same length as text: positions carry over
+              const spans = [];
+              for (const re of res) for (const m of low.matchAll(re)) if (m[0]) spans.push([m.index, m.index + m[0].length]);
+              if (!spans.length) continue;
+              spans.sort((a, b) => a[0] - b[0]);
+              const frag = document.createDocumentFragment();
+              let last = 0;
+              for (const [a, b] of spans) {
+                if (a < last) continue;
+                frag.append(text.slice(last, a));
+                const m = document.createElement("mark");
+                m.className = "hit";
+                m.textContent = text.slice(a, b);
+                frag.append(m);
+                marks.push(m);
+                last = b;
+              }
+              frag.append(text.slice(last));
+              node.replaceWith(frag);
+            }
+          }
+        };
+        mark(terms);
+        // a phrase split over two paragraphs has no single text node: mark its words
+        if (!marks.length) mark(terms.flatMap((t) => t.split(" ")));
+        return marks;
+      }
+      async function gotoHit(dir) {
+        await search.ready;
+        const { hits, terms, gen } = search;
+        if (!hits.length) return;
+        for (let tries = 0; tries < hits.length; tries++) {
+          search.cur = (search.cur + dir + hits.length) % hits.length;
+          const { row, k } = hits[search.cur];
+          // draw up to the record, a chunk per frame, so the page stays alive
+          while (state.idx <= row) {
+            renderChunk();
+            await new Promise(requestAnimationFrame);
+            if (gen !== search.gen) return; // a new query or file meanwhile
+          }
+          const els = (elsOf.get(state.rows[row]) ?? []).filter(
+            (e) => e.isConnected && getComputedStyle(e).display !== "none" && textMatches(bodyText(e), terms),
+          );
+          const el = els[Math.min(k, els.length - 1)];
+          if (!el) continue; // the feed draws it differently than searched: skip it
+          clearMarks();
+          const marks = markIn(el, terms);
+          if (!marks.length) continue;
+          for (const m of marks) {
+            const d = m.closest("details");
+            if (d && !d.open) d.open = true;
+          }
+          marks[0].classList.add("cur");
+          marks[0].scrollIntoView({ block: "center" });
+          searchCountEl.textContent = L().searchAt(search.cur + 1, hits.length);
+          return;
+        }
+        searchCountEl.textContent = L().searchNone;
+      }
+      Object.values(fbox).forEach((el) => el.addEventListener("change", () => searchEl.value && runSearch()));
+      readerBox.addEventListener("change", () => searchEl.value && runSearch());
+      searchEl.addEventListener("input", () => {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(runSearch, 250);
+      });
+      searchEl.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          clearTimeout(searchTimer);
+          if (search.terms.join("\n") !== searchTerms(searchEl.value).join("\n")) runSearch();
+          gotoHit(e.shiftKey ? -1 : 1);
+        } else if (e.key === "Escape") {
+          searchEl.value = "";
+          runSearch();
+          searchEl.blur();
+        }
+      });
+      searchMineEl.addEventListener("change", runSearch);
+      document.addEventListener("keydown", (e) => {
+        const t = e.target;
+        if (panel.open || e.ctrlKey || e.metaKey || e.altKey || /^(INPUT|TEXTAREA|SELECT)$/.test(t?.tagName ?? "") || t?.isContentEditable) return;
+        if (e.key === "/") {
+          e.preventDefault();
+          searchEl.focus();
+          searchEl.select();
+        } else if ((e.key === "n" || e.key === "N") && search.hits.length) {
+          e.preventDefault();
+          gotoHit(e.key === "N" ? -1 : 1);
+        }
+      });
 
       // ===== init & live language/theme switching =====
       langSel.value = locale;
