@@ -44,11 +44,11 @@ test("task notifications keep the existing task-note rendering", () => {
 test("slash command record becomes a system line with name and args", () => {
   const s = d(
     user(
-      "<command-name>/compact</command-name>\n            <command-message>compact</command-message>\n            <command-args>не сохраняй ничего</command-args>",
+      "<command-name>/rename</command-name>\n            <command-message>rename</command-message>\n            <command-args>claude-code-chat-viewer</command-args>",
     ),
   );
   assert.equal(s.kind, "system");
-  assert.equal(s.summary, "/compact · не сохраняй ничего");
+  assert.equal(s.summary, "/rename · claude-code-chat-viewer");
 });
 
 test("command-message first (plugin skills) is a command too", () => {
@@ -393,4 +393,14 @@ test("subagent report without indentation keeps its whole inner text", () => {
 
 test("an unclosed <task-notification> typed by a human is a message (real ones are always closed)", () => {
   assert.equal(d(user("<task-notification> вставил кусок лога, разберись")), null);
+});
+
+test("/compact is the human's command: visible in reader mode (user class), args in the summary, not a message", () => {
+  const t = "<command-name>/compact</command-name>\n<command-message>compact</command-message>\n<command-args>сохрани контекст</command-args>";
+  const s = d(user(t));
+  assert.match(s.kind, /\buser\b/);
+  assert.match(s.summary, /сохрани контекст/);
+  assert.equal(T.computeStats([user(t)]).nUser, 0);
+  // other commands stay service records
+  assert.equal(d(user("<command-name>/model</command-name>\n<command-args>opus</command-args>")).kind, "system");
 });

@@ -15,7 +15,7 @@ Catch-up with the transcript format of Claude Code up to 2.1.310 (the viewer was
 - **⤢ Open in full** — entries cut for display open whole in a panel over the feed: plain text / markdown / raw JSON of the record, "copy all", "save to file".
 - **Question → answer card** — an `AskUserQuestion` call and the human's answer in one card, kept in reader mode.
 - **Subagent reports** — `SubagentHandback` and reports delivered to the main session (`↩ report`, with the task name); finish notifications of background subagents show tokens · time · tool calls; synchronous `Agent` results show the same from `toolUseResult`.
-- **Compaction** — a divider with the token drop; the summary is collapsed; the `/compact` echo is hidden.
+- **Compaction** — a divider with the token drop; the summary is collapsed; the `/compact` echo is hidden. Reader mode keeps every divider and the `/compact` command with its arguments.
 - **Images** — base64 images (png / jpeg / gif / webp) are drawn when their block is opened, including PDF pages read by `Read` and images attached with `@path`. Nothing is fetched; Copy never carries base64.
 - **Your words in a declined tool call** ("…the user said: …") are shown as your message; an `AskUserQuestion` that timed out says so, and the selection is marked as an unsent draft.
 - **`<persisted-output>`** — results too large for the transcript show the size and the file they were saved to.

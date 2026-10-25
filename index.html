@@ -542,8 +542,12 @@
       main.hide-hooks .e.hook {
         display: none;
       }
-      main.reader-mode .e:not(.user):not(.assistant) {
+      main.reader-mode .e:not(.user):not(.assistant):not(.divider) {
         display: none;
+      }
+      /* where the context was compacted stays visible in reader mode, whatever the filters */
+      main.reader-mode .e.divider {
+        display: grid;
       }
     </style>
   </head>
@@ -1820,8 +1824,10 @@
         return rest;
       }
       const ANSI = /\u001b\[[0-9;]*[A-Za-z]/g;
+      // Owner decision 2026-10-25: every /compact stays visible in reader mode (its args
+      // are the human's words); it is a command to the CLI, so not counted as a message.
       const commandSpec = (t) => ({
-        kind: "system",
+        kind: tagText(t, "command-name") === "/compact" ? "user command" : "system",
         who: "command",
         tag: "⚡ command",
         summary: commandSummary(t) || null,
