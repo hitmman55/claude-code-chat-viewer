@@ -481,6 +481,9 @@
           errRead: "Read error:",
           emptyFile: "Empty file or not JSONL.",
           records: "records",
+          service: (n) => `${n} service`,
+          dups: (n) => `duplicates removed: ${n}`,
+          apiLog: (n, mb) => `API log hidden: ${n} req, ${mb} MB`,
           loadMore: (n, l) => `Load more ${n} (${l} remaining)`,
           loading: "Loading…",
           cut: (n) => `cut ${n} chars`,
@@ -509,6 +512,9 @@
           errRead: "Ошибка чтения:",
           emptyFile: "Файл пустой или не JSONL.",
           records: "записей",
+          service: (n) => `служебных ${n}`,
+          dups: (n) => `убрано повторов: ${n}`,
+          apiLog: (n, mb) => `журнал API скрыт: ${n} запр., ${mb} МБ`,
           loadMore: (n, l) => `Показать ещё ${n} (осталось ${l})`,
           loading: "Загружаю…",
           cut: (n) => `обрезано ${n} символов`,
@@ -537,6 +543,9 @@
           errRead: "Error de lectura:",
           emptyFile: "Archivo vacío o no es JSONL.",
           records: "registros",
+          service: (n) => `${n} de servicio`,
+          dups: (n) => `duplicados eliminados: ${n}`,
+          apiLog: (n, mb) => `registro de API oculto: ${n} sol., ${mb} MB`,
           loadMore: (n, l) => `Mostrar ${n} más (${l} restantes)`,
           loading: "Cargando…",
           cut: (n) => `cortados ${n} car.`,
@@ -566,6 +575,9 @@
           errRead: "Erreur de lecture :",
           emptyFile: "Fichier vide ou pas du JSONL.",
           records: "enregistrements",
+          service: (n) => `${n} de service`,
+          dups: (n) => `doublons supprimés : ${n}`,
+          apiLog: (n, mb) => `journal API masqué : ${n} req., ${mb} Mo`,
           loadMore: (n, l) => `Afficher ${n} de plus (${l} restants)`,
           loading: "Chargement…",
           cut: (n) => `${n} car. coupés`,
@@ -594,6 +606,9 @@
           errRead: "读取错误:",
           emptyFile: "文件为空或不是 JSONL。",
           records: "条记录",
+          service: (n) => `服务 ${n} 条`,
+          dups: (n) => `已去除重复:${n}`,
+          apiLog: (n, mb) => `已隐藏 API 日志:${n} 个请求,${mb} MB`,
           loadMore: (n, l) => `加载更多 ${n} 条(剩余 ${l})`,
           loading: "加载中…",
           cut: (n) => `截断 ${n} 字`,
@@ -622,6 +637,9 @@
           errRead: "خطأ في القراءة:",
           emptyFile: "ملف فارغ أو ليس JSONL.",
           records: "سجلات",
+          service: (n) => `${n} خدمية`,
+          dups: (n) => `مكررات محذوفة: ${n}`,
+          apiLog: (n, mb) => `سجل API مخفي: ${n} طلبًا، ${mb} ميغابايت`,
           loadMore: (n, l) => `عرض ${n} أكثر (${l} متبقٍ)`,
           loading: "جارٍ التحميل…",
           cut: (n) => `تم قصّ ${n} حرفًا`,
@@ -760,8 +778,8 @@
         statsEl.textContent = "";
         chatEl.innerHTML = `<div class="empty">${L().reading}</div>`;
         try {
-          const rows = await parseFile(f);
-          render(rows, f.name);
+          const tri = await parseFile(f);
+          render(tri.rows, f.name, tri);
         } catch (err) {
           chatEl.innerHTML = `<div class="empty">${L().errRead} ${esc(err.message)}</div>`;
         }
@@ -821,16 +839,98 @@
         loadFile(files[0]);
       });
 
+      // ===== triage =====
+      // Line/record filtering and file-wide stats shared by every loader. DOM-free on
+      // purpose: test/triage.test.mjs runs this section in Node, and the v0.2 indexer
+      // can call it from a worker unchanged.
+
+      // api-request* records (CLI 2.1.300+) are per-call API snapshots — system prompt,
+      // tool schemas, user paths — up to half the file and not part of the conversation.
+      // They are dropped before JSON.parse; "type" is always the first key.
+      const API_LOG_PREFIX = '{"type":"api-request';
+      const utf8 = new TextEncoder();
+      const utf8Size = (s) => utf8.encode(s).length;
+
+      function newTriage() {
+        return { rows: [], byUuid: new Map(), bad: 0, dups: 0, apiReq: 0, apiBytes: 0 };
+      }
+
+      function triageLine(tri, ln) {
+        if (!ln.trim()) return;
+        if (ln.startsWith(API_LOG_PREFIX)) {
+          tri.apiReq++;
+          tri.apiBytes += utf8Size(ln);
+          return;
+        }
+        let r;
+        try {
+          r = JSON.parse(ln);
+        } catch {
+          tri.bad++;
+          return;
+        }
+        triageRecord(tri, r, ln);
+      }
+
+      // src: the raw line, when there is one — only used to size dropped API records.
+      function triageRecord(tri, r, src = null) {
+        if (typeof r?.type === "string" && r.type.startsWith("api-request")) {
+          tri.apiReq++;
+          tri.apiBytes += utf8Size(src ?? JSON.stringify(r));
+          return;
+        }
+        // Resume/fork rewrites whole history segments with the same uuids (only slug,
+        // forkedFrom, version, cwd differ): keep the first position, take the latest copy.
+        const u = r?.uuid;
+        if (u) {
+          const i = tri.byUuid.get(u);
+          if (i !== undefined) {
+            tri.rows[i] = r;
+            tri.dups++;
+            return;
+          }
+          tri.byUuid.set(u, tri.rows.length);
+        }
+        tri.rows.push(r);
+      }
+
+      function computeStats(rows) {
+        let firstTs,
+          lastTs,
+          nUser = 0,
+          nAsstAnon = 0,
+          nService = 0;
+        // One API response is written as several lines (one per content block).
+        const asstIds = new Set();
+        for (const r of rows) {
+          if (r?.timestamp) {
+            firstTs ??= r.timestamp;
+            lastTs = r.timestamp;
+          }
+          const t = r?.type;
+          if (t === "user") {
+            if (!r.isMeta && !r.toolUseResult && !r.isCompactSummary) nUser++;
+          } else if (t === "assistant") {
+            if (r.isApiErrorMessage) continue;
+            const id = r.message?.id || r.uuid;
+            if (id) asstIds.add(id);
+            else nAsstAnon++; // hand-made files (demo.jsonl) carry no ids at all
+          } else if (typeof t === "string" && t !== "system") nService++;
+        }
+        return { firstTs, lastTs, nUser, nAsst: asstIds.size + nAsstAnon, nService };
+      }
+      // ===== end triage =====
+
       async function parseFile(f) {
+        const tri = newTriage();
         const name = f.name.toLowerCase();
         if (name.endsWith(".json") && !name.endsWith(".jsonl")) {
           const parsed = JSON.parse(await f.text());
-          if (Array.isArray(parsed)) return parsed;
-          if (parsed && typeof parsed === "object") return [parsed];
-          throw new Error("JSON must be an array or object");
+          if (Array.isArray(parsed)) parsed.forEach((r) => triageRecord(tri, r));
+          else if (parsed && typeof parsed === "object") triageRecord(tri, parsed);
+          else throw new Error("JSON must be an array or object");
+          return tri;
         }
-        const rows = [];
-        let bad = 0;
         const reader = f.stream().pipeThrough(new TextDecoderStream()).getReader();
         let buf = "";
         for (;;) {
@@ -839,51 +939,39 @@
           buf += value;
           let nl;
           while ((nl = buf.indexOf("\n")) >= 0) {
-            const ln = buf.slice(0, nl);
+            triageLine(tri, buf.slice(0, nl));
             buf = buf.slice(nl + 1);
-            if (!ln.trim()) continue;
-            try {
-              rows.push(JSON.parse(ln));
-            } catch {
-              bad++;
-            }
           }
         }
-        if (buf.trim()) {
-          try {
-            rows.push(JSON.parse(buf));
-          } catch {
-            bad++;
-          }
-        }
-        if (bad) console.warn(`${bad} bad lines skipped`);
-        return rows;
+        triageLine(tri, buf);
+        if (tri.bad) console.warn(`${tri.bad} bad lines skipped`);
+        return tri;
       }
 
       // ===== rendering =====
       const CHUNK = 500;
-      let state = { rows: [], idx: 0, fname: "" };
+      let state = { rows: [], idx: 0, fname: "", tri: null };
 
-      function render(rows, fname) {
+      function render(rows, fname, tri) {
         chatEl.innerHTML = "";
+        state = { rows, idx: 0, fname, tri };
         if (!rows.length) {
+          statsEl.textContent = tri?.apiReq
+            ? `${fname} · ${L().apiLog(tri.apiReq, (tri.apiBytes / 1048576).toFixed(1))}`
+            : "";
           chatEl.innerHTML = `<div class="empty">${L().emptyFile}</div>`;
           return;
         }
-        let firstTs,
-          lastTs,
-          nUser = 0,
-          nAsst = 0;
-        for (const r of rows) {
-          if (r.timestamp) {
-            firstTs ??= r.timestamp;
-            lastTs = r.timestamp;
-          }
-          if (r.type === "user" && !r.isMeta && !r.toolUseResult) nUser++;
-          else if (r.type === "assistant") nAsst++;
-        }
-        statsEl.textContent = `${fname} · ${rows.length} ${L().records} · ${nUser}→ / ←${nAsst} · ${fmtTime(firstTs)} → ${fmtTime(lastTs)}`;
-        state = { rows, idx: 0, fname };
+        const { firstTs, lastTs, nUser, nAsst, nService } = computeStats(rows);
+        const parts = [
+          fname,
+          `${rows.length} ${L().records} (${L().service(nService)})`,
+          `${nUser}→ / ←${nAsst}`,
+          `${fmtTime(firstTs)} → ${fmtTime(lastTs)}`,
+        ];
+        if (tri?.dups) parts.push(L().dups(tri.dups));
+        if (tri?.apiReq) parts.push(L().apiLog(tri.apiReq, (tri.apiBytes / 1048576).toFixed(1)));
+        statsEl.textContent = parts.join(" · ");
         renderChunk();
         applyFilters();
       }
@@ -1231,14 +1319,9 @@
           const res = await fetch("demo.jsonl");
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const text = await res.text();
-          const rows = [];
-          for (const ln of text.split("\n")) {
-            if (!ln.trim()) continue;
-            try {
-              rows.push(JSON.parse(ln));
-            } catch {}
-          }
-          render(rows, "demo.jsonl");
+          const tri = newTriage();
+          for (const ln of text.split("\n")) triageLine(tri, ln);
+          render(tri.rows, "demo.jsonl", tri);
         } catch (err) {
           chatEl.innerHTML = `<div class="empty">${L().errRead} ${esc(err.message)}</div>`;
         }
@@ -1277,7 +1360,7 @@
         storage.set("lang", locale);
         applyLocale();
         renderFilterLabels();
-        if (state.rows.length) render(state.rows, state.fname);
+        if (state.fname) render(state.rows, state.fname, state.tri);
         else renderEmptyState();
       });
 
