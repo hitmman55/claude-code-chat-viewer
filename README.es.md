@@ -16,6 +16,8 @@
 
 # Claude Code Chat Viewer
 
+Lee el historial de tus conversaciones con Claude Code en el navegador. Claude Code guarda cada sesión como un archivo JSONL en `~/.claude/projects/`; ábrelo aquí y se convierte en una lista legible —tus mensajes, las respuestas de Claude, el razonamiento (thinking), las llamadas a herramientas y sus resultados, los informes de los subagentes— con filtros y un modo lectura. Un solo archivo HTML, sin servidor, sin instalación, funciona sin conexión; nada sale de tu equipo. Compatible con el formato de transcripción hasta Claude Code 2.1.310.
+
 <p align="center">
   <img src="https://img.shields.io/badge/license-Unlicense-blue" alt="Licencia: Unlicense" />
   <img src="https://img.shields.io/badge/runtime%20deps-0-brightgreen" alt="Cero dependencias en runtime" />
@@ -27,11 +29,9 @@
   <img src="screenshot.png" alt="Captura de pantalla" width="900" />
 </p>
 
-Visor HTML para transcripciones de sesiones de [Claude Code](https://claude.com/claude-code) en formato JSONL. Se abre en el navegador — sin servidor, sin build, una sola dependencia empaquetada localmente. Funciona offline sin configuración.
-
 ## Por qué
 
-Claude Code guarda cada sesión en `~/.claude/projects/<project>/<session-uuid>.jsonl` — una línea por registro (mensaje del usuario, respuesta del modelo, thinking, tool_use, tool_result, attachment, etc.). El archivo sin procesar es ilegible; comandos integrados como `/resume` muestran la conversación pero no permiten exportarla ni revisarla después.
+Claude Code guarda cada sesión en `~/.claude/projects/<project>/<session-uuid>.jsonl` — una línea por registro (mensaje del usuario, respuesta del modelo, thinking, tool_use, tool_result, attachment, etc.). El archivo sin procesar es ilegible; comandos integrados como `/resume` y `/export` reabren una conversación o la vuelcan tal cual, pero no permiten examinar una transcripción antigua con sus llamadas a herramientas y sus registros de servicio.
 
 Este visor convierte ese `.jsonl` en un feed legible con colores por rol, bloques de servicio plegables (thinking / tools / results) y filtros.
 
@@ -46,8 +46,8 @@ Este visor convierte ese `.jsonl` en un feed legible con colores por rol, bloque
 - **pregunta → respuesta** — una llamada a `AskUserQuestion` y la respuesta de la persona en una sola tarjeta
 - **informe del subagente** (`↩ report`) — el informe final de un subagente, con el nombre de su tarea; cuando termina un subagente en segundo plano se ven tokens · tiempo · llamadas a herramientas
 - **hooks** — ejecuciones y errores de hooks (filtro propio, desactivado por defecto)
-- **compactación** — un separador con la caída de tokens; el resumen de la compactación aparece plegado
-- **imágenes** — capturas y páginas de PDF guardadas en la transcripción; se dibujan al abrir su bloque
+- **compactación** — un separador que indica cuántos tokens se liberaron; el resumen de la compactación aparece plegado
+- **imágenes** — capturas y páginas de PDF guardadas en la transcripción; se muestran al desplegar su bloque
 - **system / attachment / ui-state** — registros de servicio (ocultos por defecto); los valores que la CLI reescribe en cada turno (título de la sesión, modo de permisos) solo se muestran cuando cambian
 
 Cada bloque es una fila independiente con una barra coloreada a la izquierda. Sin burbujas de mensajería: esto es un log, no un chat.
@@ -70,7 +70,7 @@ Las transcripciones de Claude Code están en:
 ~/.claude/projects/<project-slug>/<session-uuid>.jsonl
 ```
 
-donde `<project-slug>` es tu directorio de trabajo con `/` reemplazado por `-`. Ejemplo: `/home/user/myproj` → `-home-user-myproj`.
+donde `<project-slug>` es tu directorio de trabajo con cada carácter que no sea una letra o un dígito reemplazado por `-`. Ejemplo: `/home/user/my_proj` → `-home-user-my-proj`.
 
 ## Características
 
@@ -78,13 +78,13 @@ donde `<project-slug>` es tu directorio de trabajo con `/` reemplazado por `-`. 
 
 - **Selector de archivo** — pulsa «Elegir archivo» y selecciona un `.jsonl`.
 - **Arrastrar y soltar** — suelta un archivo en cualquier parte de la página. Un borde punteado indica la zona. Las carpetas y arrastres que no sean archivos se rechazan con un mensaje.
-- **Probar con ejemplo** — en el estado inicial (al usar en línea) aparece un botón que carga un `demo.jsonl` incorporado con todos los tipos de bloque.
+- **Probar con ejemplo** — en el estado inicial (al usar en línea) aparece un botón que carga un `demo.jsonl` incorporado con los principales tipos de bloque.
 
 ### Comodidad de lectura
 
-- **Modo lectura** — botón en la cabecera que oculta todo excepto los mensajes reales del usuario y el texto del asistente. Sin thinking, sin llamadas a herramientas, sin registros de servicio.
+- **Modo lectura** — botón en la cabecera que deja solo lo que dijeron las personas y Claude: tus mensajes (incluido `/compact` con sus argumentos), las respuestas de texto de Claude, las tarjetas pregunta → respuesta, los informes de los subagentes y los separadores de compactación. Sin thinking, sin llamadas a herramientas, sin registros de servicio. Ideal para leer por encima o compartir una vista limpia.
 - **Copiar por mensaje** — botón `📋` en la cabecera de cada entrada. Copia el texto al portapapeles con confirmación `✓` durante 1.2 s. Usa `navigator.clipboard.writeText` con fallback a `document.execCommand` para contextos `file://`.
-- **Estadísticas honestas** — los mensajes de la persona y las respuestas del modelo se cuentan con las mismas reglas que la lista (la salida de herramientas, los envoltorios de comandos y las notificaciones no son mensajes tuyos); los duplicados tras `--resume` se fusionan; los registros de peticiones a la API se omiten (CLI 2.1.300+). `? N tipos de registro nuevos` señala tipos que esta versión aún no conoce: la lista aparece al pasar el ratón, y esos registros se muestran como JSON.
+- **Estadísticas honestas** — los mensajes de la persona y las respuestas del modelo se cuentan con las mismas reglas que la lista (la salida de herramientas, las etiquetas que envuelven los comandos y las notificaciones no son mensajes tuyos); los duplicados tras `--resume` se fusionan; el historial de peticiones a la API se omite (CLI 2.1.300+). `? N tipos de registro nuevos` señala tipos que esta versión aún no conoce: la lista aparece al pasar el ratón, y esos registros se muestran igualmente, en JSON.
 - **Nombres amigables para herramientas** — las herramientas conocidas reciben iconos (p. ej. `📖 Read file`, `🖥️ Shell`, `📝 Edit file`). Herramientas desconocidas / MCP → `🔧 {raw_name}`.
 - **Tema automático** — el visor sigue el `prefers-color-scheme` del sistema por defecto. Pulsa el botón sol/luna para fijar una elección; la elección fijada persiste entre sesiones.
 - **Seis idiomas de interfaz** — English, Русский, Español, Français, 中文, العربية. El árabe cambia a RTL. Selector en la cabecera, preferencia guardada.
@@ -94,19 +94,19 @@ donde `<project-slug>` es tu directorio de trabajo con `/` reemplazado por `-`. 
 - **Parseo en streaming** — `.jsonl` se lee vía `file.stream()` + `TextDecoderStream`, no se carga como una sola cadena.
 - **Virtualización nativa** — `content-visibility: auto` en cada registro: el navegador omite layout y paint para entradas fuera de pantalla. Escala a miles de registros.
 - **Renderizado por lotes** — 500 registros por lote, botón «Mostrar más» para el resto.
-- **Filtros** — seis casillas (thinking / tools / results / system / hooks / ui-state), alternan categorías vía una sola clase CSS en el contenedor (sin reflow del DOM).
-- **Renderizado seguro frente a XSS** — cada bloque de texto se escapa _antes_ de pasar por el parser de markdown. Las imágenes Markdown se neutralizan (texto inerte, nunca se descargan). Los enlaces se limitan a `http(s)` con `rel="noopener noreferrer nofollow"`.
-- **Límites de tamaño** — bloques de prosa truncados a 20 KB, bloques de servicio a 5 KB. Las operaciones de copia heredan estos límites — la página nunca envía megabytes al portapapeles y no puede colgar el navegador.
-- **⤢ Abrir completo** — una entrada recortada para mostrarse tiene un botón `⤢`: el texto completo se abre en un panel sobre la lista (texto / markdown / JSON original del registro), con «copiar todo» y «guardar en archivo». La altura de la lista no cambia.
+- **Filtros** — seis casillas (thinking / tools / results / system / hooks / ui-state), alternan categorías vía una sola clase CSS en el contenedor (sin volver a renderizar nada).
+- **Renderizado seguro frente a XSS** — cada bloque de texto se escapa _antes_ de pasar por el parser de markdown. Ningún HTML en bruto de la transcripción llega nunca al DOM, así que no hace falta un sanitizador de DOM en tiempo de ejecución. Las imágenes Markdown se neutralizan (texto inerte, nunca se descargan). Los enlaces se limitan a `http(s)` con `rel="noopener noreferrer nofollow"`.
+- **Límites de tamaño** — bloques de prosa truncados a 20 000 caracteres, bloques de servicio a 5 000. El botón `📋` copia lo que se muestra, dentro de estos límites, así que un clic nunca envía megabytes de texto; el texto completo solo se obtiene cuando se pide, mediante `⤢`.
+- **⤢ Abrir completo** — una entrada recortada para mostrarse tiene un botón `⤢`: el texto completo se abre en un panel sobre la lista (texto / markdown / JSON original del registro), con «Copiar todo» y «Guardar archivo». La altura de la lista no cambia.
 - **Fallback para `.json`** — si el archivo no es JSONL sino un array/objeto JSON plano, se interpreta como lista de registros.
 
 ## Requisitos del navegador
 
 - Chrome / Edge 85+
-- Safari 18+
-- Firefox 125+
+- Firefox 105+
+- Safari 15.4+
 
-Todo ello para `content-visibility: auto`. En navegadores antiguos el visor se abre, pero el scroll en archivos grandes será notablemente más lento.
+`content-visibility: auto` (Firefox 125+, Safari 18+) solo acelera el desplazamiento en archivos grandes; sin él todo funciona, solo que más lento.
 
 ## Dependencias
 
@@ -122,11 +122,11 @@ Una transcripción guarda mucho más que la conversación. Antes de compartir un
 
 - todos los mensajes, bloques de thinking y salidas de herramientas, incluido el contenido de archivos y la salida de comandos, que pueden contener claves, tokens o contraseñas;
 - rutas absolutas, tu nombre de usuario, el directorio de trabajo y la rama de git, repetidos en cada registro;
-- el correo de tu cuenta, el prompt de sistema completo y el texto de tus archivos `CLAUDE.md`: el visor pliega estos registros y solo muestra su tamaño;
+- el correo de tu cuenta, el prompt de sistema completo y el texto de tus archivos `CLAUDE.md`: estos registros están ocultos por defecto (filtros system / ui-state), su resumen de una línea solo muestra recuentos y, al abrir uno, se ve su contenido;
 - imágenes: capturas y páginas de archivos PDF leídos durante la sesión;
-- registros completos de peticiones a la API (líneas `api-request*`, CLI 2.1.300+; a menudo la mayor parte del archivo): el visor los omite, pero están en el archivo.
+- el historial completo de peticiones a la API (líneas `api-request*`, CLI 2.1.300+; hasta la mitad del archivo): el visor lo omite, pero está en el archivo.
 
-Las salidas demasiado grandes no están en la transcripción: Claude Code las guarda en `<sesión>/tool-results/` junto al archivo, y el visor solo muestra una vista previa de ~2 KB y la ruta.
+Las salidas demasiado grandes no están en la transcripción: Claude Code las guarda en `<session>/tool-results/` junto al archivo, y el visor solo muestra una vista previa de ~2 KB y la ruta.
 
 ## Privacidad
 
@@ -135,7 +135,7 @@ Todo funciona localmente en tu navegador. El visor en sí **no realiza peticione
 ## Limitaciones conocidas
 
 - Archivos mayores de ~100 MB necesitan carga indexada por line-offsets con renderizado por ventanas (no implementado).
-- No hay exportación a Markdown/HTML (el objetivo es visualizar, no convertir).
+- No se puede exportar una sesión completa (el objetivo es visualizar, no convertir); una sola entrada puede guardarse con `⤢` → «Guardar archivo».
 - Sin resaltado de sintaxis en bloques de código (decisión consciente para minimizar dependencias).
 - Un mensaje que editaste y volviste a enviar aparece dos veces: las ramas de la conversación aún no se dibujan como árbol.
 - Las etiquetas de los registros de servicio muestran el nombre en bruto del tipo (p. ej. `hook_success`), sin traducir: así los tipos nuevos no necesitan traducción.
@@ -151,7 +151,7 @@ node scripts/check-syntax.mjs  # syntax of the inline script
 node --test test/*.test.mjs    # unit tests
 ```
 
-Las partes sin DOM —la selección de registros y las tablas de reglas que deciden cómo se muestra cada tipo de registro— están entre las marcas `// ===== triage =====` y `// ===== rules =====`; las pruebas las extraen de `index.html` y las ejecutan en Node. Dar soporte a un tipo de registro nuevo suele ser una entrada en una tabla de reglas.
+Las partes sin DOM —la clasificación de registros y las tablas de reglas que deciden cómo se muestra cada tipo de registro— están en las secciones `triage` y `rules` del script, cada una entre `// ===== <name> =====` y `// ===== end <name> =====`; las pruebas las extraen de `index.html` y las ejecutan en Node. Para dar soporte a un tipo de registro nuevo suele bastar con una entrada en una tabla de reglas.
 
 ## Licencia
 
