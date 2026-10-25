@@ -253,6 +253,12 @@
       .e.hook {
         --bar: var(--c-hook);
       }
+      .e.ask {
+        --bar: var(--c-user);
+      }
+      .e.report {
+        --bar: var(--c-thinking);
+      }
       .e.system.error,
       .e.hook.error {
         --bar: var(--c-error);
@@ -1091,7 +1097,7 @@
         tri.rows.push(r);
       }
 
-      function computeStats(rows) {
+      function computeStats(rows, idx = buildIndex(rows)) {
         let firstTs,
           lastTs,
           nUser = 0,
@@ -1107,7 +1113,8 @@
           }
           const t = r?.type;
           if (t === "user") {
-            if (!r.isMeta && !r.toolUseResult && !r.isCompactSummary) nUser++;
+            // Same classifier as the feed: wrappers, markers and echoes are not messages.
+            if (!r.toolUseResult && isHumanMessage(r, idx)) nUser++;
           } else if (t === "assistant") {
             if (r.isApiErrorMessage) continue;
             const id = r.message?.id || r.uuid;
@@ -1274,16 +1281,19 @@
         scheduled_task_fire: { icon: "⏰", summary: (r) => joinDot(clip(r.content, 100), r.cron), body: null },
       };
 
+      // Text inside the first <tag>…</tag>, trimmed; undefined when absent or unclosed.
+      // indexOf, not a lazy regex: a wall of unclosed tags made the regex quadratic.
+      function tagText(s, tag) {
+        const open = `<${tag}>`;
+        const i = s.indexOf(open);
+        if (i < 0) return undefined;
+        const j = s.indexOf(`</${tag}>`, i + open.length);
+        return j < 0 ? undefined : s.slice(i + open.length, j).trim();
+      }
+
       function commandSummary(content) {
         const s = typeof content === "string" ? content : "";
-        // indexOf, not a lazy regex: a wall of unclosed tags made the regex quadratic.
-        const pick = (tag) => {
-          const open = `<${tag}>`;
-          const i = s.indexOf(open);
-          if (i < 0) return undefined;
-          const j = s.indexOf(`</${tag}>`, i + open.length);
-          return j < 0 ? undefined : s.slice(i + open.length, j).trim();
-        };
+        const pick = (tag) => tagText(s, tag);
         const name = pick("command-name");
         if (name) return joinDot(name, clip(pick("command-args"), 60));
         const out = pick("local-command-stdout");
@@ -1549,18 +1559,208 @@
         result: { icon: "🔀", summary: (r) => clip(r.result?.scenario ?? r.agentId), body: (r) => ({ json: r.result ?? r }) },
       };
 
-      // Tool calls that are really messages, not tool use.
+      // Tool calls that are really messages, not tool use. body(input, block, index).
       const TOOL_RULES = {
         // CLI 2.1.271+: a subagent's final report travels in this call's input.
-        SubagentHandback: { kind: "assistant", who: "handback", body: (i) => i?.message },
+        SubagentHandback: { icon: "↩", kind: "assistant", who: "handback", body: (i) => i?.message },
+        // Owner decision 2026-10-25: question and the human's answer in one card that
+        // reader mode keeps; the matching tool_result is swallowed (index.askCards).
+        AskUserQuestion: {
+          icon: "❓",
+          kind: "assistant ask",
+          who: "question",
+          body: (i, b, idx) => askBody(i, idx?.ask.get(b.id)),
+        },
       };
 
-      function describeTool(b) {
+      function describeTool(b, idx = null) {
         if (!hasOwn(TOOL_RULES, b?.name)) return null;
         const rule = TOOL_RULES[b.name];
-        const body = rule.body(b.input);
+        const body = rule.body(b.input, b, idx);
         if (typeof body !== "string" || !body.trim()) return null; // generic tool card instead
-        return { prose: true, kind: rule.kind, who: rule.who, tag: `↩ ${b.name}`, body, md: true };
+        return { prose: true, kind: rule.kind, who: rule.who, tag: `${rule.icon} ${b.name}`, body, md: true };
+      }
+
+      function askBody(input, res) {
+        const qs = arr(input?.questions).filter((q) => typeof q?.question === "string");
+        if (!qs.length) return null;
+        const answers = res?.answers && typeof res.answers === "object" ? res.answers : {};
+        const notes = res?.annotations && typeof res.annotations === "object" ? res.annotations : {};
+        return qs
+          .map((q) => {
+            const a = hasOwn(answers, q.question)
+              ? String(answers[q.question])
+              : !res
+                ? "—"
+                : res.isError
+                  ? `⛔ ${clip(res.text, 200)}`
+                  : clip(res.text, 300);
+            const n = hasOwn(notes, q.question) ? notes[q.question]?.notes : null;
+            return `**${q.question}**\n\n→ ${a}` + (typeof n === "string" && n ? `\n\n> ${n}` : "");
+          })
+          .join("\n\n");
+      }
+
+      // ----- user records: what the CLI writes as "user" but no human typed (phase 3') -----
+      // Detection mirrors research/classify_jsonl.py, validated on the whole corpus.
+      const INTERRUPTED = new Set([
+        "[Request interrupted by user]",
+        "[Request interrupted by user for tool use]",
+        "[Request interrupted]",
+      ]);
+      const CONTINUE_MARKER = "Continue from where you left off.";
+      const AGENT_MSG_PREFIX = "Another Claude session sent a message:";
+      const LEAD_TAG = /^<([a-z][a-z0-9-]{2,40})>/i;
+      const ANSI = /\u001b\[[0-9;]*[A-Za-z]/g;
+      const commandSpec = (t) => ({
+        kind: "system",
+        who: "command",
+        tag: "⚡ command",
+        summary: commandSummary(t) || null,
+        body: t,
+      });
+      const bashOutputSpec = (t) => {
+        const out = tagText(t, "bash-stdout") ?? "";
+        const err = tagText(t, "bash-stderr") ?? "";
+        const body = textLines(out, err && `[stderr]\n${err}`);
+        return {
+          kind: err ? "tool-result error" : "tool-result",
+          who: "shell",
+          tag: "! output",
+          summary: clip(body, 100) || null,
+          body: body || null,
+        };
+      };
+      // Leading wrapper tag → spec. legacy: keep the pre-3' rendering path.
+      const USER_TAG_RULES = {
+        "task-notification": () => ({ legacy: "task" }),
+        "local-command-caveat": () => ({ legacy: "meta" }),
+        "fork-boilerplate": () => ({ legacy: "meta" }),
+        "command-name": commandSpec,
+        "command-message": commandSpec, // plugin skills write the tags in reverse order
+        "local-command-stdout": (t) => {
+          const out = (tagText(t, "local-command-stdout") ?? t).replace(ANSI, "").trim();
+          return { kind: "system", who: "command", tag: "📤 stdout", summary: clip(out, 100) || null, body: out || null };
+        },
+        "bash-input": (t) => {
+          const cmd = tagText(t, "bash-input") ?? t;
+          return { kind: "tool-use", who: "shell", tag: "! shell", summary: clip(cmd, 100) || null, body: cmd || null };
+        },
+        "bash-stdout": bashOutputSpec,
+        "bash-stderr": bashOutputSpec,
+        // Collapsible, never hidden: one corpus record is live human text after the tag.
+        "system-reminder": (t) => ({ kind: "meta", who: "inject", tag: "system-reminder", summary: null, body: t }),
+      };
+
+      function reportSpec(t, idx) {
+        const id = t.match(/<agent-message from="([^"]*)"/)?.[1] ?? null;
+        const open = t.indexOf("<agent-message");
+        const start = open < 0 ? -1 : t.indexOf(">", open);
+        const end = t.lastIndexOf("</agent-message>");
+        const inner = start >= 0 && end > start ? t.slice(start + 1, end) : t;
+        // The harness indents every report line by two spaces; its own frame is not indented.
+        const lines = inner.split("\n");
+        const first = lines.findIndex((l) => l.startsWith("  "));
+        const body =
+          first < 0
+            ? inner.trim()
+            : lines
+                .slice(first)
+                .map((l) => (l.startsWith("  ") ? l.slice(2) : l))
+                .join("\n")
+                .trim()
+                // the harness may prepend its own note about neutralized tags
+                .replace(/^\[harness:[^\n]*\]\s*/, "");
+        const desc = id != null && idx?.agentDesc.has(id) ? idx.agentDesc.get(id) : null;
+        return {
+          kind: "assistant report",
+          who: "subagent",
+          tag: "↩ report",
+          summary: joinDot(desc ?? id ?? "?", clip(body, 70)),
+          body: body || null,
+          md: true,
+        };
+      }
+
+      // null → a message a human typed; otherwise a spec for specEntry (or legacy / hide).
+      function describeUser(r, text, idx = null) {
+        const meta = r.isMeta === true;
+        if (r.isCompactSummary === true)
+          return { kind: "meta", who: "compact", tag: "✂ compact summary", summary: null, body: text || null, md: true };
+        if (r.sourceToolUseID) {
+          const dir = text.match(/^Base directory for this skill: (\S+)/m)?.[1];
+          const name = dir ? baseName(dir.replace(/\/+$/, "")) : text.match(/^# (.+)$/m)?.[1];
+          return { kind: "meta", who: "skill", tag: "⭐ skill", summary: name ? clip(name, 80) : null, body: text || null, md: true };
+        }
+        const t = text.trim();
+        if (INTERRUPTED.has(t)) return { kind: "meta", who: "user", tag: "⛔ interrupted", summary: t, body: null };
+        if (/^\/compact(\s|$)/.test(t) && idx?.compactEchoes.has(r.uuid)) return { hide: true };
+        if (meta && t === CONTINUE_MARKER)
+          return { kind: "meta", who: "inject", tag: "▶ continue", summary: "resume continuation", body: null };
+        if (meta && t.startsWith(AGENT_MSG_PREFIX)) return reportSpec(t, idx);
+        const tag = t.match(LEAD_TAG)?.[1]?.toLowerCase();
+        if (tag && hasOwn(USER_TAG_RULES, tag)) return USER_TAG_RULES[tag](t);
+        return meta ? { legacy: "meta" } : null;
+      }
+
+      function userTextOf(r) {
+        const c = r?.message?.content;
+        if (typeof c === "string") return c;
+        return arr(c)
+          .filter((b) => b?.type === "text" && typeof b.text === "string")
+          .map((b) => b.text)
+          .join("\n");
+      }
+
+      const isHumanMessage = (r, idx) => {
+        const text = userTextOf(r);
+        return text.trim() !== "" && describeUser(r, text, idx) === null;
+      };
+
+      // Cross-record facts, one pass per file: answers of AskUserQuestion calls, task
+      // descriptions of subagents, and which "/compact" lines are only the echo of a
+      // manual compaction (a leaf followed by a manual compact_boundary).
+      function buildIndex(rows) {
+        const parents = new Set();
+        const askCards = new Set();
+        const ask = new Map();
+        const agentDesc = new Map();
+        const compactEchoes = new Set();
+        for (const r of rows) {
+          if (!r || typeof r !== "object") continue;
+          if (r.parentUuid) parents.add(r.parentUuid);
+          if (r.type === "assistant")
+            for (const b of arr(r.message?.content))
+              if (b?.type === "tool_use" && b.name === "AskUserQuestion" && b.id && askBody(b.input, null))
+                askCards.add(b.id);
+          const tur = r.toolUseResult;
+          if (r.type === "user" && tur && typeof tur === "object" && typeof tur.agentId === "string")
+            if (typeof tur.description === "string") agentDesc.set(tur.agentId, tur.description);
+        }
+        for (let i = 0; i < rows.length; i++) {
+          const r = rows[i];
+          if (r?.type !== "user") continue;
+          for (const b of arr(r.message?.content)) {
+            if (b?.type !== "tool_result" || !askCards.has(b.tool_use_id)) continue;
+            const text =
+              typeof b.content === "string"
+                ? b.content
+                : arr(b.content)
+                    .map((x) => (typeof x?.text === "string" ? x.text : ""))
+                    .join("\n");
+            const tur = r.toolUseResult && typeof r.toolUseResult === "object" ? r.toolUseResult : {};
+            ask.set(b.tool_use_id, { text, isError: b.is_error === true, answers: tur.answers, annotations: tur.annotations });
+          }
+          if (!r.uuid || parents.has(r.uuid) || !/^\/compact(\s|$)/.test(userTextOf(r).trim())) continue;
+          for (let j = i + 1; j < Math.min(rows.length, i + 16); j++) {
+            const x = rows[j];
+            if (x?.type === "system" && x.subtype === "compact_boundary" && x.compactMetadata?.trigger === "manual") {
+              compactEchoes.add(r.uuid);
+              break;
+            }
+          }
+        }
+        return { parents, askCards, ask, agentDesc, compactEchoes };
       }
 
       function ruleTable(r) {
@@ -1645,7 +1845,7 @@
 
       // ===== rendering =====
       const CHUNK = 500;
-      let state = { rows: [], idx: 0, fname: "", tri: null };
+      let state = { rows: [], idx: 0, fname: "", tri: null, index: null };
 
       function render(rows, fname, tri) {
         if (panel.open) panel.close(); // a new file (e.g. dropped over the modal) replaces the old
@@ -1659,7 +1859,8 @@
           chatEl.innerHTML = `<div class="empty">${L().emptyFile}</div>`;
           return;
         }
-        const { firstTs, lastTs, nUser, nAsst, nService, newTypes } = computeStats(rows);
+        const index = buildIndex(rows);
+        const { firstTs, lastTs, nUser, nAsst, nService, newTypes } = computeStats(rows, index);
         const parts = [
           fname,
           `${rows.length} ${L().records} (${L().service(nService)})`,
@@ -1672,6 +1873,7 @@
         if (newTypes.length) parts.push(L().newTypes(newTypes.length));
         statsEl.textContent = parts.join(" · ");
         statsEl.title = newTypes.join("\n");
+        state.index = index;
         renderChunk();
         applyFilters();
       }
@@ -1770,28 +1972,28 @@
 
       function userEntries(r, ts) {
         const c = r.message?.content;
-        const isMeta = r.isMeta === true;
-
-        if (typeof c === "string") {
-          if (isMeta) return [metaEntry(c, ts, L().systemInject)];
-          if (c.startsWith("<task-notification>")) return [taskNoteEntry(c, ts)];
-          return [proseEntry("user", "user", ts, c)];
-        }
-
+        const idx = state.index;
+        if (typeof c === "string") return userTextEntries(r, c, ts, idx);
         if (!Array.isArray(c)) return [];
         const out = [];
         for (const b of c) {
           if (b.type === "tool_result") {
-            out.push(toolResultEntry(b, ts));
+            // an AskUserQuestion answer is already shown inside its question card
+            if (!idx?.askCards.has(b.tool_use_id)) out.push(toolResultEntry(b, ts));
           } else if (b.type === "text" && (b.text || "").trim()) {
-            out.push(
-              isMeta
-                ? metaEntry(b.text, ts, L().systemInject)
-                : proseEntry("user", "user", ts, b.text),
-            );
+            out.push(...userTextEntries(r, b.text, ts, idx));
           }
         }
         return out;
+      }
+
+      function userTextEntries(r, text, ts, idx) {
+        const s = describeUser(r, text, idx);
+        if (!s) return [proseEntry("user", "user", ts, text)];
+        if (s.hide) return [];
+        if (s.legacy === "meta") return [metaEntry(text, ts, L().systemInject)];
+        if (s.legacy === "task") return [taskNoteEntry(text, ts)];
+        return [specEntry(s, ts)];
       }
 
       function assistantEntries(r, ts) {
@@ -1818,7 +2020,7 @@
               ),
             );
           } else if (b.type === "tool_use") {
-            const spec = describeTool(b);
+            const spec = describeTool(b, state.index);
             out.push(spec ? specEntry(spec, ts) : toolUseEntry(b, ts));
           }
         }
