@@ -1,0 +1,798 @@
+{
+ "demo": {
+  "stats": {
+   "firstTs": "2026-04-21T10:00:00.000Z",
+   "lastTs": "2026-04-21T10:02:00.100Z",
+   "nUser": 5,
+   "nAsst": 15,
+   "nService": 9,
+   "newTypes": [],
+   "bad": 0,
+   "dups": 0,
+   "apiReq": 0
+  },
+  "entries": [
+   [
+    "user",
+    "user",
+    null,
+    "Hi! Can you show me what files are in this project and expla…"
+   ],
+   [
+    "thinking",
+    "claude",
+    null,
+    "The user wants a tour of the project. I'll start with a dire…"
+   ],
+   [
+    "tool-use",
+    "Bash",
+    null,
+    null
+   ],
+   [
+    "tool-result",
+    "result",
+    null,
+    "\"total 24\\ndrwxr-xr-x 4 dev users 128 Apr 21 09:55 .\\ndrwxr-…"
+   ],
+   [
+    "tool-use",
+    "Read",
+    null,
+    null
+   ],
+   [
+    "tool-result",
+    "result",
+    null,
+    "\"# Demo Project\\n\\nA tiny Node.js demo for a chat viewer sho…"
+   ],
+   [
+    "text",
+    "claude",
+    null,
+    "Here's the layout: - **`README.md`** — project description -…"
+   ],
+   [
+    "user",
+    "user",
+    null,
+    "Yes, let's see package.json"
+   ],
+   [
+    "thinking",
+    "claude",
+    null,
+    "Simple read. I already know roughly what's there from the fi…"
+   ],
+   [
+    "tool-use",
+    "Read",
+    null,
+    null
+   ],
+   [
+    "tool-result",
+    "result",
+    null,
+    "\"{\\n \\\"name\\\": \\\"demo\\\",\\n \\\"version\\\": \\\"1.0.0\\\",\\n \\\"scrip…"
+   ],
+   [
+    "text",
+    "claude",
+    null,
+    "Minimal as expected: ```json { \"name\": \"demo\", \"version\": \"1…"
+   ],
+   [
+    "user",
+    "user",
+    null,
+    "No thanks, that's enough for the tour!"
+   ],
+   [
+    "text",
+    "claude",
+    null,
+    "Great — quick recap: - Small Node.js project, zero dependenc…"
+   ],
+   [
+    "system",
+    "system",
+    "⏱ turn_duration",
+    "41.0s · 14 msgs"
+   ],
+   [
+    "ui",
+    "custom-title",
+    "🏷 custom-title",
+    "Project tour"
+   ],
+   [
+    "system",
+    "permission-mode",
+    "🔐 permission-mode",
+    "default"
+   ],
+   [
+    "user",
+    "user",
+    null,
+    "Run the tests in the background, and ask me before you chang…"
+   ],
+   [
+    "hidden",
+    "permission-mode",
+    null,
+    null
+   ],
+   [
+    "tool-use",
+    "Agent",
+    null,
+    null
+   ],
+   [
+    "tool-result",
+    "result",
+    null,
+    "\"Async agent launched successfully.\""
+   ],
+   [
+    "hidden",
+    "queue-operation",
+    null,
+    null
+   ],
+   [
+    "tool-use",
+    "Bash",
+    null,
+    null
+   ],
+   [
+    "tool-result",
+    "result",
+    null,
+    "\"<persisted-output>\\nOutput too large (48.2KB). Full output …"
+   ],
+   [
+    "hidden",
+    "queue-operation",
+    null,
+    null
+   ],
+   [
+    "user",
+    "user",
+    "⏳ queued_command",
+    "Also check that the README links work"
+   ],
+   [
+    "hook",
+    "attachment",
+    "🪝 hook_success",
+    "PostToolUse:Bash · exit 0 · 84ms"
+   ],
+   [
+    "tool-use",
+    "Read",
+    null,
+    null
+   ],
+   [
+    "tool-result",
+    "result",
+    null,
+    "[{\"type\":\"text\",\"text\":\"Image read: /demo/docs/screenshot.pn…"
+   ],
+   [
+    "text",
+    "claude",
+    null,
+    "The README links to `docs/screenshot.png` (exists, shown abo…"
+   ],
+   [
+    "assistant ask",
+    "question",
+    "❓ AskUserQuestion",
+    "**The test script has no timeout. Add one?** → Yes, 30 s"
+   ],
+   [
+    "task-note",
+    "task",
+    "⏳ queued_command",
+    "Agent \"Run unit tests\" finished · 🤖 31k tokens · 42.0s · 6 tools"
+   ],
+   [
+    "system",
+    "permission-mode",
+    "🔐 permission-mode",
+    "default → acceptEdits"
+   ],
+   [
+    "tool-use",
+    "Edit",
+    null,
+    null
+   ],
+   [
+    "tool-result",
+    "result",
+    null,
+    "\"The file /demo/package.json has been updated successfully.\""
+   ],
+   [
+    "text",
+    "claude",
+    null,
+    "Done: the background run passed (3 tests), the README links …"
+   ],
+   [
+    "system",
+    "system",
+    "⏱ turn_duration",
+    "46.0s · 20 msgs"
+   ],
+   [
+    "system",
+    "system",
+    "✂ compact_boundary",
+    "compact (manual) · 48k → 3k tokens · 5.4s"
+   ],
+   [
+    "meta",
+    "compact",
+    "✂ compact summary",
+    null
+   ]
+  ]
+ },
+ "synthetic": {
+  "stats": {
+   "firstTs": "2026-10-25T10:00:00.000Z",
+   "lastTs": "2026-10-25T10:00:00.000Z",
+   "nUser": 1,
+   "nAsst": 0,
+   "nService": 76,
+   "newTypes": [
+    "attachment:future_attachment",
+    "future-record",
+    "system:future_subtype"
+   ],
+   "bad": 1,
+   "dups": 0,
+   "apiReq": 1
+  },
+  "entries": [
+   [
+    "system",
+    "system",
+    "⏱ turn_duration",
+    "1.2s"
+   ],
+   [
+    "hook",
+    "system",
+    "🪝 stop_hook_summary",
+    "0 hooks"
+   ],
+   [
+    "system",
+    "system",
+    "📋 away_summary",
+    "sample content"
+   ],
+   [
+    "system",
+    "system",
+    "⚡ local_command",
+    "sample content"
+   ],
+   [
+    "system",
+    "system",
+    "✂ compact_boundary",
+    "compact (?)"
+   ],
+   [
+    "system",
+    "system",
+    "⚠ model_refusal_fallback",
+    "? → ?"
+   ],
+   [
+    "system error",
+    "system",
+    "⛔ model_refusal_no_fallback",
+    null
+   ],
+   [
+    "system error",
+    "system",
+    "❌ api_error",
+    "API error"
+   ],
+   [
+    "system",
+    "system",
+    "⚠ informational",
+    "sample content"
+   ],
+   [
+    "system",
+    "system",
+    "⏰ scheduled_task_fire",
+    "sample content"
+   ],
+   [
+    "task-note",
+    "task",
+    "⏳ queued_command",
+    "sample prompt"
+   ],
+   [
+    "hook",
+    "attachment",
+    "🪝 hook_success",
+    "PreToolUse:Bash · exit 1 · 1.2s"
+   ],
+   [
+    "hook error",
+    "attachment",
+    "🪝 hook_non_blocking_error",
+    "PreToolUse:Bash · exit 1 · 1.2s"
+   ],
+   [
+    "hook error",
+    "attachment",
+    "⛔ hook_blocking_error",
+    "PreToolUse:Bash"
+   ],
+   [
+    "hook error",
+    "attachment",
+    "⏱ hook_cancelled",
+    "PreToolUse:Bash · cancelled · 1.2s"
+   ],
+   [
+    "hook",
+    "attachment",
+    "🪝 hook_additional_context",
+    "PreToolUse:Bash · sample content"
+   ],
+   [
+    "hook",
+    "attachment",
+    "🪝 hook_system_message",
+    "PreToolUse:Bash · sample content"
+   ],
+   [
+    "ui",
+    "attachment",
+    "📄 file",
+    null
+   ],
+   [
+    "ui",
+    "attachment",
+    "✏️ edited_text_file",
+    null
+   ],
+   [
+    "ui",
+    "attachment",
+    "📁 directory",
+    null
+   ],
+   [
+    "ui",
+    "attachment",
+    "📄 compact_file_reference",
+    null
+   ],
+   [
+    "ui",
+    "attachment",
+    "⭐ invoked_skills",
+    null
+   ],
+   [
+    "ui",
+    "attachment",
+    "🧠 nested_memory",
+    null
+   ],
+   [
+    "ui",
+    "attachment",
+    "📝 plan_file_reference",
+    null
+   ],
+   [
+    "system",
+    "attachment",
+    "📝 plan_mode",
+    "plan mode"
+   ],
+   [
+    "system",
+    "attachment",
+    "📝 plan_mode_exit",
+    "plan mode exit"
+   ],
+   [
+    "system",
+    "attachment",
+    "📝 plan_mode_reentry",
+    "plan mode re-entry"
+   ],
+   [
+    "ui",
+    "attachment",
+    "📜 instructions",
+    "0 files"
+   ],
+   [
+    "ui",
+    "attachment",
+    "🧾 prompt_snapshot",
+    "0 parts"
+   ],
+   [
+    "ui",
+    "attachment",
+    "🔒 session_context",
+    null
+   ],
+   [
+    "ui",
+    "attachment",
+    "🖥 environment",
+    null
+   ],
+   [
+    "hidden",
+    "attachment",
+    null,
+    null
+   ],
+   [
+    "hidden",
+    "attachment",
+    null,
+    null
+   ],
+   [
+    "ui",
+    "attachment",
+    "🤖 model",
+    "sample text"
+   ],
+   [
+    "ui",
+    "attachment",
+    "📅 date",
+    null
+   ],
+   [
+    "system",
+    "attachment",
+    "📅 date_change",
+    "date change"
+   ],
+   [
+    "ui",
+    "attachment",
+    "🌐 language",
+    null
+   ],
+   [
+    "ui",
+    "attachment",
+    "🩺 diagnostics",
+    "0 files · 0 issues"
+   ],
+   [
+    "ui",
+    "attachment",
+    "🔧 deferred_tools_delta",
+    null
+   ],
+   [
+    "ui",
+    "attachment",
+    "🔧 deferred_tools_record",
+    "0 tools"
+   ],
+   [
+    "ui",
+    "attachment",
+    "🔌 mcp_instructions_delta",
+    null
+   ],
+   [
+    "ui",
+    "attachment",
+    "🤖 agent_listing_delta",
+    "0 agent types"
+   ],
+   [
+    "ui",
+    "attachment",
+    "⭐ skill_listing",
+    "0 skills"
+   ],
+   [
+    "ui",
+    "attachment",
+    "🔐 command_permissions",
+    "0 allowed"
+   ],
+   [
+    "hidden",
+    "attachment",
+    null,
+    null
+   ],
+   [
+    "task-note",
+    "task",
+    "🤖 task_status",
+    null
+   ],
+   [
+    "ui",
+    "attachment",
+    "🤖 auto_mode",
+    "auto mode"
+   ],
+   [
+    "ui",
+    "attachment",
+    "🤖 auto_mode_exit",
+    "auto mode exit"
+   ],
+   [
+    "ui",
+    "attachment",
+    "🧠 ultrathink_effort",
+    "warning"
+   ],
+   [
+    "ui",
+    "attachment",
+    "🧠 ultra_effort_enter",
+    null
+   ],
+   [
+    "ui",
+    "attachment",
+    "🔀 workflow_keyword_request",
+    null
+   ],
+   [
+    "ui",
+    "attachment",
+    "💬 silent_turn_reminder",
+    null
+   ],
+   [
+    "ui",
+    "attachment",
+    "💬 bash_output_audience_note",
+    null
+   ],
+   [
+    "ui",
+    "attachment",
+    "💬 batching_reminder_sent",
+    null
+   ],
+   [
+    "ui",
+    "attachment",
+    "✂ read_truncation_notice",
+    null
+   ],
+   [
+    "ui",
+    "attachment",
+    "🔗 remote_session_change",
+    null
+   ],
+   [
+    "ui",
+    "attachment",
+    "⏰ session_cron_carry",
+    null
+   ],
+   [
+    "ui",
+    "attachment",
+    "💭 thinking_drop",
+    null
+   ],
+   [
+    "task-note",
+    "task",
+    "🧩 structured_output",
+    null
+   ],
+   [
+    "ui",
+    "attachment",
+    "⭐ dynamic_skill",
+    null
+   ],
+   [
+    "system",
+    "attachment",
+    "🎯 goal_status",
+    "⏳ not met"
+   ],
+   [
+    "hidden",
+    "mode",
+    null,
+    null
+   ],
+   [
+    "hidden",
+    "atis-latch",
+    null,
+    null
+   ],
+   [
+    "hidden",
+    "last-prompt",
+    null,
+    null
+   ],
+   [
+    "hidden",
+    "agent-setting",
+    null,
+    null
+   ],
+   [
+    "ui",
+    "custom-title",
+    "🏷 custom-title",
+    null
+   ],
+   [
+    "ui",
+    "ai-title",
+    "🏷 ai-title",
+    null
+   ],
+   [
+    "ui",
+    "agent-name",
+    "🏷 agent-name",
+    null
+   ],
+   [
+    "system",
+    "permission-mode",
+    "🔐 permission-mode",
+    null
+   ],
+   [
+    "user",
+    "user",
+    "⏳ queue-operation",
+    "enqueue · sample content"
+   ],
+   [
+    "ui",
+    "file-history-snapshot",
+    "💾 file-history-snapshot",
+    "0 files"
+   ],
+   [
+    "ui",
+    "file-history-delta",
+    "💾 file-history-delta",
+    null
+   ],
+   [
+    "system",
+    "pr-link",
+    "🔗 pr-link",
+    null
+   ],
+   [
+    "system",
+    "fork-context-ref",
+    "🍴 fork-context-ref",
+    null
+   ],
+   [
+    "ui",
+    "progress",
+    "⏳ progress",
+    null
+   ],
+   [
+    "system",
+    "cost-state",
+    "💲 cost-state",
+    null
+   ],
+   [
+    "ui",
+    "frame-link",
+    "🖼 frame-link",
+    null
+   ],
+   [
+    "system",
+    "continued-in",
+    "➡ continued-in",
+    null
+   ],
+   [
+    "system",
+    "relocated",
+    "📂 relocated",
+    null
+   ],
+   [
+    "system",
+    "worktree-state",
+    "🌿 worktree-state",
+    null
+   ],
+   [
+    "system",
+    "summary",
+    "📋 summary",
+    null
+   ],
+   [
+    "ui",
+    "launched",
+    "🔀 launched",
+    null
+   ],
+   [
+    "ui",
+    "started",
+    "🔀 started",
+    null
+   ],
+   [
+    "ui",
+    "result",
+    "🔀 result",
+    null
+   ],
+   [
+    "system",
+    "system",
+    "future_subtype",
+    null
+   ],
+   [
+    "ui",
+    "attachment",
+    "future_attachment",
+    null
+   ],
+   [
+    "ui",
+    "future-record",
+    "future-record",
+    null
+   ],
+   [
+    "ui",
+    "unknown",
+    "?",
+    null
+   ]
+  ]
+ }
+}

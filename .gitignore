@@ -2,6 +2,7 @@
 *.json
 !demo.jsonl
 !package.json
+!test/fixtures/golden.json
 
 dist/
 node_modules/
