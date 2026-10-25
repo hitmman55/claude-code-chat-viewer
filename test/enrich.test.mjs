@@ -51,7 +51,8 @@ test("copy/summary text of an image is its label, never the base64", () => {
   assert.match(t, /image\/png/);
   assert.equal(T.blockText({ type: "text", text: "hello" }), "hello");
   assert.equal(T.blockText("raw"), "raw");
-  assert.equal(T.blockText({ type: "tool_reference", tool_name: "Bash" }), JSON.stringify({ type: "tool_reference", tool_name: "Bash" }, null, 2));
+  // a block type it doesn't know falls back to JSON (tool_reference has its own line since 2026-10-26)
+  assert.equal(T.blockText({ type: "future_block", n: 1 }), JSON.stringify({ type: "future_block", n: 1 }, null, 2));
 });
 
 test("PDF pages injected by Read are an image item of the record, not a human message", () => {

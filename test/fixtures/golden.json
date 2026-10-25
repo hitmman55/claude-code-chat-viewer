@@ -254,7 +254,7 @@
    "lastTs": "2026-10-25T10:00:00.000Z",
    "nUser": 1,
    "nAsst": 0,
-   "nService": 76,
+   "nService": 77,
    "newTypes": [
     "attachment:future_attachment",
     "future-record",
@@ -378,6 +378,12 @@
     "attachment",
     "✏️ edited_text_file",
     null
+   ],
+   [
+    "ui",
+    "attachment",
+    "📄 already_read_file",
+    "unchanged since last read"
    ],
    [
     "ui",

@@ -35,6 +35,13 @@ Claude Code writes every session to `~/.claude/projects/<project>/<session-uuid>
 
 This viewer turns such a `.jsonl` into a readable feed with color-coded roles, collapsible service blocks (thinking / tools / results), and filters.
 
+## How it differs
+
+- **Nothing to install, nothing listening.** One HTML file: no server, no open port, no automatic network requests.
+- **Reads the format in depth.** Subagent reports, compactions, queued messages, declined tool calls, images and the records Claude Code adds with each version — each is labelled for what it is, and a record type it doesn't know yet is shown and flagged, never dropped.
+- **Honest about who said what.** Command wrappers, hook output and machine notifications are not counted or shown as your messages.
+- **Not only Latin script.** Six UI languages, RTL for Arabic; the feed shows any language as written.
+
 ## What it shows
 
 - **user** (blue) — real user messages
@@ -72,6 +79,13 @@ Claude Code transcripts live at:
 
 where `<project-slug>` is your working directory with every character other than a letter or digit replaced by `-`. Example: `/home/user/my_proj` → `-home-user-my-proj`.
 
+### Claude Code runs on a server
+
+Often Claude Code works on a remote Linux machine while you read on a Mac or a Windows laptop. The browser can't reach the server by itself — bring the files over in one of two ways:
+
+- **Mount the server as a drive** — SFTP clients such as RaiDrive or SSHFS-Win (Windows), Mountain Duck (Mac, Windows) or `sshfs` (Mac, Linux). Then open a transcript from that drive as from a local folder.
+- **Copy the transcripts** — on Mac or Linux `rsync -a user@host:~/.claude/projects/ ~/claude-projects/` (repeat it to fetch only what changed); on Windows `scp -r user@host:~/.claude/projects/<project-slug> .` or the file panel of your SSH client (Termius, WinSCP). A copy can be read with no connection at all.
+
 ## Features
 
 ### Ways to load a file
@@ -84,10 +98,13 @@ where `<project-slug>` is your working directory with every character other than
 
 - **Reader mode** — a header toggle that keeps only what people and Claude said: your messages (including `/compact` with its arguments), Claude's text replies, question → answer cards, subagent reports and compaction dividers. No thinking, no tool calls, no service records. Good for skimming or sharing a clean view.
 - **Copy per message** — `📋` button in each entry header. Copies the entry's text to the clipboard, with a checkmark confirmation for 1.2 s. Uses `navigator.clipboard.writeText` with a `document.execCommand` fallback for `file://` contexts.
-- **Honest stats line** — human messages and model replies are counted by the same rules as the feed (tool output, command wrappers and notifications are not your messages); duplicates after `--resume` are merged; API request logs are skipped (CLI 2.1.300+). `? N new record types` flags record types this version doesn't know yet — hover for the list; those records are still shown, as JSON.
+- **Honest stats line** — human messages and model replies are counted by the same rules as the feed (tool output, command wrappers and notifications are not your messages); duplicates after `--resume` are merged; API request logs are skipped (CLI 2.1.300+). Token totals of the transcript: `tokens ↑in ↓out`, each API message counted once (input includes cache reads and writes; subagents keep their own transcripts). Broken lines are counted. `? N new record types` flags record types and content blocks this version doesn't know yet — hover for the list; those records are still shown, as JSON.
+- **Resume command** — `📋 claude --resume` next to the stats line copies `cd '<project dir>' && claude --resume <session id>`, ready to paste. Not shown for a subagent transcript, nor when the path or id holds characters a shell could misread.
+- **Diffs** — the result of an `Edit` or `Write` shows the change as a colored diff, taken from the patch Claude Code stores with the result, with `+N −M` in its header.
+- **Task cards** — `TaskCreate` / `TaskUpdate` read as `#7 → completed · subject`; the subject is taken from the task's creation, wherever it is in the file.
 - **Friendly tool names** — known tools are labelled with icons (e.g. `📖 Read file`, `🖥️ Shell`, `📝 Edit file`). Unknown / MCP tools fall back to `🔧 {raw_name}`.
 - **Auto theme** — the viewer follows your system's `prefers-color-scheme` by default. Click the sun/moon button to pin a choice; pinned choice persists across sessions.
-- **Six UI languages** — English, Русский, Español, Français, 中文, العربية. Arabic switches to RTL. Picker in the header, preference saved.
+- **Six UI languages** — English, Русский, Español, Français, 中文, العربية. Arabic switches to RTL. Picker in the header, preference saved. Switching keeps your place: the records already loaded, the blocks you opened, the entry at the top of the screen.
 
 ### Performance & safety
 
@@ -134,7 +151,7 @@ Everything runs locally in your browser. The viewer itself makes **no automatic 
 
 ## Known limits
 
-- Files over ~100 MB need indexed line-offset loading with window-based rendering (not implemented).
+- The file is read as a stream, but all its records stay in memory. Measured in Chromium: 200 MB (30 000 records) opens in ~3 s and takes ~170 MB of memory; API request logs, skipped while reading, don't count. Files of several GB need indexed loading (not implemented).
 - No export of a whole session (the goal is viewing, not conversion); a single entry can be saved through `⤢` → Save file.
 - No syntax highlighting in code blocks (intentional — kept dependencies minimal).
 - A message you edited and resent appears twice — conversation branches are not drawn as a tree yet.

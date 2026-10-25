@@ -35,6 +35,13 @@ Claude Code enregistre chaque session dans `~/.claude/projects/<project>/<sessio
 
 Cette visionneuse transforme un tel `.jsonl` en un flux lisible avec des rôles codés par couleur, des blocs de service repliables (thinking / tools / results) et des filtres.
 
+## Ce qui la distingue
+
+- **Rien à installer, rien à l'écoute.** Un seul fichier HTML : pas de serveur, pas de port ouvert, aucune requête réseau automatique.
+- **Lit le format en profondeur.** Rapports de sous-agents, compactions, messages en file d'attente, appels d'outils refusés, images et enregistrements que Claude Code ajoute à chaque version — chacun est étiqueté pour ce qu'il est, et un type d'enregistrement encore inconnu est affiché et signalé, jamais écarté.
+- **Honnête sur qui a dit quoi.** Les balises qui encadrent les commandes, la sortie des hooks et les notifications automatiques ne sont ni comptées ni affichées comme vos messages.
+- **Pas seulement l'alphabet latin.** Six langues d'interface, RTL pour l'arabe ; le fil affiche toute langue telle qu'elle est écrite.
+
 ## Ce qui est affiché
 
 - **user** (bleu) — messages réels de l'utilisateur
@@ -72,6 +79,13 @@ Les transcriptions de Claude Code se trouvent dans :
 
 où `<project-slug>` est votre répertoire de travail dont chaque caractère autre qu'une lettre ou un chiffre est remplacé par `-`. Exemple : `/home/user/my_proj` → `-home-user-my-proj`.
 
+### Claude Code tourne sur un serveur
+
+Souvent, Claude Code travaille sur une machine Linux distante pendant que vous lisez sur un Mac ou un portable Windows. Le navigateur ne peut pas atteindre le serveur tout seul — rapatriez les fichiers de l'une de ces deux façons :
+
+- **Monter le serveur comme un lecteur** — des clients SFTP comme RaiDrive ou SSHFS-Win (Windows), Mountain Duck (Mac, Windows) ou `sshfs` (Mac, Linux). Ouvrez ensuite une transcription depuis ce lecteur comme depuis un dossier local.
+- **Copier les transcriptions** — sur Mac ou Linux `rsync -a user@host:~/.claude/projects/ ~/claude-projects/` (relancez-le pour ne récupérer que ce qui a changé) ; sous Windows `scp -r user@host:~/.claude/projects/<project-slug> .` ou le panneau de fichiers de votre client SSH (Termius, WinSCP). Une copie se lit sans aucune connexion.
+
 ## Fonctionnalités
 
 ### Comment charger un fichier
@@ -84,10 +98,13 @@ où `<project-slug>` est votre répertoire de travail dont chaque caractère aut
 
 - **Mode lecture** — bouton dans l'en-tête qui ne garde que ce qu'ont dit les personnes et Claude : vos messages (y compris `/compact` avec ses arguments), les réponses textuelles de Claude, les cartes question → réponse, les rapports des sous-agents et les séparateurs de compaction. Pas de thinking, pas d'appels d'outils, pas d'enregistrements de service. Idéal pour parcourir rapidement ou partager une vue épurée.
 - **Copier par message** — bouton `📋` dans l'en-tête de chaque entrée. Copie le texte dans le presse-papiers avec une confirmation `✓` pendant 1.2 s. Utilise `navigator.clipboard.writeText` avec un fallback `document.execCommand` pour les contextes `file://`.
-- **Statistiques honnêtes** — les messages de la personne et les réponses du modèle sont comptés selon les mêmes règles que le fil (la sortie d'outils, les balises qui encadrent les commandes et les notifications ne sont pas vos messages) ; les doublons après `--resume` sont fusionnés ; les journaux de requêtes API sont ignorés (CLI 2.1.300+). `? N nouveaux types d'enregistrement` signale les types que cette version ne connaît pas encore : la liste s'affiche au survol, et ces enregistrements restent visibles en JSON.
+- **Statistiques honnêtes** — les messages de la personne et les réponses du modèle sont comptés selon les mêmes règles que le fil (la sortie d'outils, les balises qui encadrent les commandes et les notifications ne sont pas vos messages) ; les doublons après `--resume` sont fusionnés ; les journaux de requêtes API sont ignorés (CLI 2.1.300+). Totaux de jetons de la transcription : `jetons ↑entrée ↓sortie`, chaque message API compté une seule fois (l'entrée inclut les lectures et écritures du cache ; les sous-agents ont leurs propres transcriptions). Les lignes illisibles sont comptées. `? N nouveaux types d'enregistrement` signale les types d'enregistrement et de blocs de contenu que cette version ne connaît pas encore : la liste s'affiche au survol, et ces enregistrements restent visibles en JSON.
+- **Commande de reprise** — `📋 claude --resume`, à côté de la ligne de statistiques, copie `cd '<project dir>' && claude --resume <session id>`, prête à coller. Absente pour une transcription de sous-agent, ainsi que lorsque le chemin ou l'identifiant contient des caractères qu'un shell pourrait mal interpréter.
+- **Diffs** — le résultat d'un `Edit` ou `Write` affiche la modification sous forme de diff coloré, tiré du correctif (patch) que Claude Code stocke avec le résultat, avec `+N −M` dans son en-tête.
+- **Cartes de tâches** — `TaskCreate` / `TaskUpdate` se lisent comme `#7 → completed · sujet` ; le sujet est repris de la création de la tâche, où qu'elle se trouve dans le fichier.
 - **Noms d'outils conviviaux** — les outils connus reçoivent des icônes (par ex. `📖 Read file`, `🖥️ Shell`, `📝 Edit file`). Outils inconnus / MCP → `🔧 {raw_name}`.
 - **Thème automatique** — la visionneuse suit le `prefers-color-scheme` du système par défaut. Cliquez sur le bouton soleil/lune pour épingler un choix ; le choix épinglé persiste entre les sessions.
-- **Six langues d'interface** — English, Русский, Español, Français, 中文, العربية. L'arabe bascule en RTL. Sélecteur dans l'en-tête, préférence sauvegardée.
+- **Six langues d'interface** — English, Русский, Español, Français, 中文, العربية. L'arabe bascule en RTL. Sélecteur dans l'en-tête, préférence sauvegardée. Changer de langue conserve votre position : les enregistrements déjà chargés, les blocs ouverts, l'entrée en haut de l'écran.
 
 ### Performance et sécurité
 
@@ -134,7 +151,7 @@ Tout fonctionne localement dans votre navigateur. La visionneuse elle-même **n'
 
 ## Limitations connues
 
-- Les fichiers de plus de ~100 Mo nécessitent un chargement indexé par offsets de lignes avec rendu par fenêtres (non implémenté).
+- Le fichier est lu en streaming, mais tous ses enregistrements restent en mémoire. Mesuré sous Chromium : 200 Mo (30 000 enregistrements) s'ouvrent en ~3 s et occupent ~170 Mo de mémoire ; les journaux de requêtes API, ignorés à la lecture, ne comptent pas. Les fichiers de plusieurs Go nécessitent un chargement indexé (non implémenté).
 - Pas d'export d'une session entière (l'objectif est la visualisation, pas la conversion) ; une entrée isolée peut être enregistrée via `⤢` → « Enregistrer le fichier ».
 - Pas de coloration syntaxique dans les blocs de code (choix assumé pour garder les dépendances minimales).
 - Un message modifié puis renvoyé apparaît deux fois : les branches de la conversation ne sont pas encore dessinées en arbre.

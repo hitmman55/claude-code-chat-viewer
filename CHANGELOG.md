@@ -6,7 +6,32 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **Diffs** — the result of an `Edit` / `Write` is shown as a colored diff, from the patch Claude Code stores with it (`+N −M` in the header).
+- **Task cards** — `TaskCreate` / `TaskUpdate` read as `#7 → completed · subject`, the subject taken from where the task was created.
+- **Resume command** — `📋 claude --resume` next to the stats line copies `cd '<project dir>' && claude --resume <session id>`; hidden for subagent transcripts and for paths or ids a shell could misread.
+- **Token totals** in the stats line — each API message counted once.
+- `already_read_file` attachments (a file read again, unchanged) get a one-line summary instead of `? new record type`.
+- **Model fallback** inside a reply (`claude-fable-5 → claude-opus-4-8`) is shown as a system line; before, it was dropped.
+- A tool reference in a result (after `ToolSearch`) reads `🔎 tool loaded: WebFetch` instead of raw JSON.
+- The stats line counts broken lines, and `? N new record types` also lists content blocks this version doesn't know (`content:<type>`).
+- README: "How it differs", and how to read transcripts when Claude Code runs on a server (mounted drive or copy).
+
+### Fixed
+
+- Switching the UI language no longer throws away the records loaded with "Load more", the opened blocks and the scroll position.
+- A file that finishes reading after a newer one was opened no longer replaces it; the older read is stopped.
+- One field the browser can't turn into text (`{"toString": 1}` is valid JSON) no longer stops the whole file with "Read error".
+- A broken block in a Claude reply no longer turns the whole reply into an error card; blocks of an unknown type, and user content of an unexpected shape, are shown as JSON instead of vanishing.
+- Cutting a long text no longer splits an emoji in half.
+- "Save file" keeps non-Latin letters in the file name (it used to turn `сессия.jsonl` into `_.txt`).
+- Notices such as "Reading…" follow a language switch.
+- Links in a transcript no longer let the browser resolve their host names in advance (DNS prefetch is off).
+
+### Changed
+
+- README, known limits: the measured size instead of "~100 MB" — 200 MB opens in ~3 s.
 
 ## [0.1.2] — 2026-10-26
 

@@ -35,6 +35,13 @@ Claude Code guarda cada sesión en `~/.claude/projects/<project>/<session-uuid>.
 
 Este visor convierte ese `.jsonl` en un feed legible con colores por rol, bloques de servicio plegables (thinking / tools / results) y filtros.
 
+## En qué se diferencia
+
+- **Nada que instalar, nada a la escucha.** Un solo archivo HTML: sin servidor, sin puerto abierto, sin peticiones de red automáticas.
+- **Lee el formato a fondo.** Informes de subagentes, compactaciones, mensajes en cola, llamadas a herramientas rechazadas, imágenes y los registros que Claude Code añade en cada versión: cada uno se etiqueta según lo que es, y un tipo de registro que aún no conoce se muestra y se señala, nunca se descarta.
+- **Honesto sobre quién dijo qué.** Las etiquetas que envuelven los comandos, la salida de los hooks y las notificaciones automáticas no se cuentan ni se muestran como mensajes tuyos.
+- **No solo alfabeto latino.** Seis idiomas de interfaz, RTL para el árabe; la lista muestra cualquier idioma tal como está escrito.
+
 ## Qué muestra
 
 - **user** (azul) — mensajes reales del usuario
@@ -72,6 +79,13 @@ Las transcripciones de Claude Code están en:
 
 donde `<project-slug>` es tu directorio de trabajo con cada carácter que no sea una letra o un dígito reemplazado por `-`. Ejemplo: `/home/user/my_proj` → `-home-user-my-proj`.
 
+### Claude Code se ejecuta en un servidor
+
+A menudo Claude Code trabaja en una máquina Linux remota mientras tú lees en un Mac o un portátil con Windows. El navegador no puede llegar al servidor por sí solo: trae los archivos de una de estas dos formas:
+
+- **Montar el servidor como unidad** — clientes SFTP como RaiDrive o SSHFS-Win (Windows), Mountain Duck (Mac, Windows) o `sshfs` (Mac, Linux). Después abre una transcripción desde esa unidad como desde una carpeta local.
+- **Copiar las transcripciones** — en Mac o Linux `rsync -a user@host:~/.claude/projects/ ~/claude-projects/` (repítelo para traer solo lo que cambió); en Windows `scp -r user@host:~/.claude/projects/<project-slug> .` o el panel de archivos de tu cliente SSH (Termius, WinSCP). Una copia se puede leer sin ninguna conexión.
+
 ## Características
 
 ### Cómo cargar un archivo
@@ -84,10 +98,13 @@ donde `<project-slug>` es tu directorio de trabajo con cada carácter que no sea
 
 - **Modo lectura** — botón en la cabecera que deja solo lo que dijeron las personas y Claude: tus mensajes (incluido `/compact` con sus argumentos), las respuestas de texto de Claude, las tarjetas pregunta → respuesta, los informes de los subagentes y los separadores de compactación. Sin thinking, sin llamadas a herramientas, sin registros de servicio. Ideal para leer por encima o compartir una vista limpia.
 - **Copiar por mensaje** — botón `📋` en la cabecera de cada entrada. Copia el texto al portapapeles con confirmación `✓` durante 1.2 s. Usa `navigator.clipboard.writeText` con fallback a `document.execCommand` para contextos `file://`.
-- **Estadísticas honestas** — los mensajes de la persona y las respuestas del modelo se cuentan con las mismas reglas que la lista (la salida de herramientas, las etiquetas que envuelven los comandos y las notificaciones no son mensajes tuyos); los duplicados tras `--resume` se fusionan; el historial de peticiones a la API se omite (CLI 2.1.300+). `? N tipos de registro nuevos` señala tipos que esta versión aún no conoce: la lista aparece al pasar el ratón, y esos registros se muestran igualmente, en JSON.
+- **Estadísticas honestas** — los mensajes de la persona y las respuestas del modelo se cuentan con las mismas reglas que la lista (la salida de herramientas, las etiquetas que envuelven los comandos y las notificaciones no son mensajes tuyos); los duplicados tras `--resume` se fusionan; el historial de peticiones a la API se omite (CLI 2.1.300+). Totales de tokens de la transcripción: `tokens ↑entrada ↓salida`, cada mensaje de la API se cuenta una sola vez (la entrada incluye lecturas y escrituras de caché; los subagentes tienen sus propias transcripciones). Las líneas dañadas se cuentan. `? N tipos de registro nuevos` señala tipos de registro y bloques de contenido que esta versión aún no conoce: la lista aparece al pasar el ratón, y esos registros se muestran igualmente, en JSON.
+- **Comando para reanudar** — `📋 claude --resume`, junto a la línea de estadísticas, copia `cd '<project dir>' && claude --resume <session id>`, listo para pegar. No aparece en la transcripción de un subagente, ni cuando la ruta o el id contienen caracteres que una shell podría malinterpretar.
+- **Diffs** — el resultado de un `Edit` o `Write` muestra el cambio como un diff en color, tomado del parche que Claude Code guarda con el resultado, con `+N −M` en su cabecera.
+- **Tarjetas de tareas** — `TaskCreate` / `TaskUpdate` se leen como `#7 → completed · asunto`; el asunto se toma de la creación de la tarea, esté donde esté en el archivo.
 - **Nombres amigables para herramientas** — las herramientas conocidas reciben iconos (p. ej. `📖 Read file`, `🖥️ Shell`, `📝 Edit file`). Herramientas desconocidas / MCP → `🔧 {raw_name}`.
 - **Tema automático** — el visor sigue el `prefers-color-scheme` del sistema por defecto. Pulsa el botón sol/luna para fijar una elección; la elección fijada persiste entre sesiones.
-- **Seis idiomas de interfaz** — English, Русский, Español, Français, 中文, العربية. El árabe cambia a RTL. Selector en la cabecera, preferencia guardada.
+- **Seis idiomas de interfaz** — English, Русский, Español, Français, 中文, العربية. El árabe cambia a RTL. Selector en la cabecera, preferencia guardada. Al cambiar de idioma no pierdes tu sitio: los registros ya cargados, los bloques que abriste, la entrada en la parte superior de la pantalla.
 
 ### Rendimiento y seguridad
 
@@ -134,7 +151,7 @@ Todo funciona localmente en tu navegador. El visor en sí **no realiza peticione
 
 ## Limitaciones conocidas
 
-- Archivos mayores de ~100 MB necesitan carga indexada por line-offsets con renderizado por ventanas (no implementado).
+- El archivo se lee en streaming, pero todos sus registros permanecen en memoria. Medido en Chromium: 200 MB (30 000 registros) se abren en ~3 s y ocupan ~170 MB de memoria; el historial de peticiones a la API, que se omite al leer, no cuenta. Los archivos de varios GB necesitan carga indexada (no implementado).
 - No se puede exportar una sesión completa (el objetivo es visualizar, no convertir); una sola entrada puede guardarse con `⤢` → «Guardar archivo».
 - Sin resaltado de sintaxis en bloques de código (decisión consciente para minimizar dependencias).
 - Un mensaje que editaste y volviste a enviar aparece dos veces: las ramas de la conversación aún no se dibujan como árbol.

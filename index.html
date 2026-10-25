@@ -2,6 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <meta http-equiv="x-dns-prefetch-control" content="off" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Claude Code Chat Viewer</title>
     <meta
@@ -136,12 +137,32 @@
       #version:hover {
         text-decoration: underline;
       }
-      #stats {
+      #statsbar {
         flex-basis: 100%;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 4px 10px;
+      }
+      #stats {
+        flex: 1 1 20em;
         margin: 0;
         font-size: 12px;
         color: var(--muted);
         overflow-wrap: anywhere;
+      }
+      #resume {
+        font-size: 12px;
+        font-family: ui-monospace, monospace;
+      }
+      pre.diff .d-add {
+        color: var(--c-assistant);
+      }
+      pre.diff .d-del {
+        color: var(--c-error);
+      }
+      pre.diff .d-hunk {
+        color: var(--muted);
       }
 
       main {
@@ -600,7 +621,10 @@
         rel="noopener noreferrer nofollow"
         title="Releases"
       ></a>
-      <div id="stats"></div>
+      <div id="statsbar">
+        <div id="stats"></div>
+        <button type="button" id="resume" hidden>📋 claude --resume</button>
+      </div>
     </header>
     <main id="chat"><div class="empty" id="emptyState"></div></main>
     <dialog id="full-panel" aria-labelledby="fp-title">
@@ -665,6 +689,9 @@
           copy: "Copy",
           copied: "Copied!",
           tryExample: "Try with example",
+          badLines: (n) => `broken lines skipped: ${n}`,
+          copyResume: "Copy the command that resumes this session",
+          tokens: (i, o) => `tokens ↑${i} ↓${o}`,
           filter: {
             thinking: "Thinking",
             tools: "Tools",
@@ -708,6 +735,9 @@
           copy: "Скопировать",
           copied: "Скопировано!",
           tryExample: "Открыть пример",
+          badLines: (n) => `пропущено битых строк: ${n}`,
+          copyResume: "Скопировать команду, которая продолжит эту сессию",
+          tokens: (i, o) => `токенов ↑${i} ↓${o}`,
           filter: {
             thinking: "Размышления",
             tools: "Инструменты",
@@ -751,6 +781,9 @@
           copy: "Copiar",
           copied: "¡Copiado!",
           tryExample: "Probar con ejemplo",
+          badLines: (n) => `líneas dañadas omitidas: ${n}`,
+          copyResume: "Copiar el comando que reanuda esta sesión",
+          tokens: (i, o) => `tokens ↑${i} ↓${o}`,
           filter: {
             thinking: "Pensamiento",
             tools: "Herramientas",
@@ -795,6 +828,9 @@
           copy: "Copier",
           copied: "Copié !",
           tryExample: "Essayer avec l'exemple",
+          badLines: (n) => `lignes illisibles ignorées : ${n}`,
+          copyResume: "Copier la commande qui reprend cette session",
+          tokens: (i, o) => `jetons ↑${i} ↓${o}`,
           filter: {
             thinking: "Réflexion",
             tools: "Outils",
@@ -838,6 +874,9 @@
           copy: "复制",
           copied: "已复制!",
           tryExample: "试用示例",
+          badLines: (n) => `已跳过损坏的行：${n}`,
+          copyResume: "复制继续此会话的命令",
+          tokens: (i, o) => `Token ↑${i} ↓${o}`,
           filter: {
             thinking: "思考",
             tools: "工具",
@@ -881,6 +920,9 @@
           copy: "نسخ",
           copied: "تم النسخ!",
           tryExample: "جرّب مثالاً",
+          badLines: (n) => `أسطر تالفة تم تخطيها: ${n}`,
+          copyResume: "انسخ الأمر الذي يستأنف هذه الجلسة",
+          tokens: (i, o) => `رموز ↑${i} ↓${o}`,
           filter: {
             thinking: "التفكير",
             tools: "الأدوات",
@@ -943,6 +985,7 @@
       // ===== DOM refs =====
       const chatEl = document.getElementById("chat");
       const statsEl = document.getElementById("stats");
+      const resumeBtn = document.getElementById("resume");
       document.getElementById("version").textContent = `v${VERSION}`;
       const fileEl = document.getElementById("file");
       const emptyEl = document.getElementById("emptyState");
@@ -999,13 +1042,13 @@
       const MAX_PROSE = 20_000;
       const MAX_SVC = 5_000;
       const cut = (s, max) =>
-        !s ? "" : s.length <= max ? s : s.slice(0, max) + `\n\n… [${L().cut(s.length - max)}]`;
+        !s ? "" : s.length <= max ? s : safeSlice(s, max) + `\n\n… [${L().cut(s.length - max)}]`;
       const trunc = (s) => cut(s, MAX_PROSE);
       const truncSvc = (s) => cut(s, MAX_SVC);
 
       // ===== escaping & markdown =====
       const esc = (s) =>
-        String(s).replace(
+        toStr(s).replace(
           /[&<>"']/g,
           (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
         );
@@ -1026,7 +1069,7 @@
         }
       };
       const preview = (s, n = 100) => {
-        const p = s.slice(0, n).replace(/\s+/g, " ").trim();
+        const p = safeSlice(s, n).replace(/\s+/g, " ").trim();
         return esc(p) + (s.length > n ? "…" : "");
       };
 
@@ -1034,21 +1077,29 @@
       // The feed shows a message instead of a file: forget the file too. Stale stats
       // would mislead, and a language switch (it re-renders state) would bring the
       // old file back over the message.
+      // Every notice starts a new "load": a file that finishes reading after a newer
+      // file or message took the feed is dropped (loaders compare their number).
+      let loadSeq = 0;
+      let noticeHtml = null; // () => html of the notice on screen, redrawn on a language switch
       function showNotice(html) {
+        loadSeq++;
+        noticeHtml = html;
         if (panel.open) panel.close();
         state = { rows: [], idx: 0, fname: "", tri: null, index: null };
         statsEl.textContent = "";
         statsEl.title = "";
-        chatEl.innerHTML = `<div class="empty">${html}</div>`;
+        resumeBtn.hidden = true;
+        chatEl.innerHTML = `<div class="empty">${html()}</div>`;
       }
 
       async function loadFile(f) {
-        showNotice(L().reading);
+        showNotice(() => L().reading);
+        const seq = loadSeq;
         try {
-          const tri = await parseFile(f);
-          render(tri.rows, f.name, tri);
+          const tri = await parseFile(f, () => seq !== loadSeq);
+          if (seq === loadSeq) render(tri.rows, f.name, tri);
         } catch (err) {
-          showNotice(`${L().errRead} ${esc(err.message)}`);
+          if (seq === loadSeq) showNotice(() => `${L().errRead} ${esc(err.message)}`);
         }
       }
 
@@ -1095,7 +1146,7 @@
         const items = Array.from(e.dataTransfer.items || []);
         const hasFolder = items.some((it) => it.webkitGetAsEntry?.()?.isDirectory);
         if (hasFolder) {
-          showNotice(L().dropFolderHint);
+          showNotice(() => L().dropFolderHint);
           return;
         }
 
@@ -1115,6 +1166,25 @@
       // tool schemas, user paths — up to half the file and not part of the conversation.
       // They are dropped before JSON.parse; "type" is always the first key.
       const API_LOG_PREFIX = '{"type":"api-request';
+      // Any value of a record as text. String() throws on an object whose toString is
+      // not a function ({"toString":1} is valid JSON) — one such field killed the file.
+      const toStr = (x) => {
+        if (typeof x === "string") return x;
+        if (x == null) return "";
+        if (typeof x !== "object") return String(x);
+        try {
+          return JSON.stringify(x) ?? "";
+        } catch {
+          return "[unserializable]";
+        }
+      };
+      // Content block types the feed understands; a malformed one is shown, but is not a new type.
+      const KNOWN_BLOCKS = new Set(["text", "thinking", "tool_use", "tool_result", "image", "fallback"]);
+      // s.slice(0, n) that never leaves half of a surrogate pair (an emoji) at the end.
+      const safeSlice = (s, n) => {
+        const c = s.charCodeAt(n - 1);
+        return s.slice(0, c >= 0xd800 && c <= 0xdbff ? n - 1 : n);
+      };
       const utf8 = new TextEncoder();
       const utf8Size = (s) => utf8.encode(s).length;
 
@@ -1176,6 +1246,11 @@
             lastTs = r.timestamp;
           }
           const t = r?.type;
+          // content blocks this version doesn't know — the same early signal as record types
+          if (t === "user" || t === "assistant")
+            for (const it of t === "user" ? planUserRecord(r, idx) : planAssistantRecord(r))
+              if (it.type === "unknown" && typeof it.block?.type === "string" && !KNOWN_BLOCKS.has(it.block.type))
+                newTypes.add(`content:${clip(it.block.type, 40)}`);
           if (t === "user") {
             // Same plan as the feed: wrappers, markers and echoes are not messages; a reply
             // typed while a tool ran sits next to its tool_result and is one.
@@ -1223,10 +1298,8 @@
       const hasOwn = (o, k) => k != null && Object.prototype.hasOwnProperty.call(o, k);
       const arr = (x) => (Array.isArray(x) ? x : []);
       const clip = (s, n = 80) => {
-        const p = String(s ?? "")
-          .replace(/\s+/g, " ")
-          .trim();
-        return p.length > n ? p.slice(0, n) + "…" : p;
+        const p = toStr(s).replace(/\s+/g, " ").trim();
+        return p.length > n ? safeSlice(p, n) + "…" : p;
       };
       const fmtDur = (ms) => {
         if (typeof ms !== "number" || !isFinite(ms)) return "";
@@ -1240,14 +1313,17 @@
       const fmtK = (n) =>
         typeof n !== "number" ? "?" : n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1000 ? `${Math.round(n / 1000)}k` : String(n);
       const joinDot = (...xs) =>
-        xs.filter((x) => x != null && x !== "" && x !== false && x !== 0).join(" · ");
+        xs
+          .filter((x) => x != null && x !== "" && x !== false && x !== 0)
+          .map(toStr)
+          .join(" · ");
       const textLines = (...xs) =>
         xs
           .flat()
           .filter((x) => x != null && x !== "")
           .map((x) => (typeof x === "string" ? x : JSON.stringify(x)))
           .join("\n");
-      const baseName = (path) => String(path ?? "").split("/").pop();
+      const baseName = (path) => toStr(path).split("/").pop();
       // Keys of a plain object only — a string here would yield one key per character.
       const objKeys = (o) => (o && typeof o === "object" && !Array.isArray(o) ? Object.keys(o) : []);
 
@@ -1452,6 +1528,12 @@
           images: (a) => (fileImage(a) ? [fileImage(a)] : null),
         },
         edited_text_file: { icon: "✏️", summary: (a) => a.displayPath ?? a.filename },
+        // the file was read earlier and has not changed since — the CLI sends no content
+        already_read_file: {
+          icon: "📄",
+          summary: (a) => joinDot(a.displayPath ?? a.filename, "unchanged since last read"),
+          body: null,
+        },
         directory: { icon: "📁", summary: (a) => a.displayPath ?? a.path },
         compact_file_reference: { icon: "📄", summary: (a) => a.displayPath ?? a.filename, body: null },
         invoked_skills: {
@@ -1701,7 +1783,7 @@
         const structured = qs.some((q) => hasOwn(answers, q.question));
         const parts = qs.map((q) => {
           if (!structured) return `**${q.question}**`;
-          const a = hasOwn(answers, q.question) ? String(answers[q.question]) : "—";
+          const a = hasOwn(answers, q.question) ? toStr(answers[q.question]) : "—";
           const n = hasOwn(notes, q.question) ? notes[q.question]?.notes : null;
           return `**${q.question}**\n\n→ ${a}` + (typeof n === "string" && n ? `\n\n> ${n}` : "");
         });
@@ -1729,10 +1811,14 @@
         return { ok, src: ok ? `data:${mt};base64,${data}` : null, label: `[image: ${joinDot(mt, size)}]` };
       }
       // Text of one tool_result content item — an image is its label, never base64.
-      function blockText(x) {
+      // json: how an unknown item becomes text (the feed passes a bounded one). Anything
+      // else in that place — map() passes the index there — means the default.
+      function blockText(x, json) {
+        if (typeof json !== "function") json = jsonFull;
         if (typeof x === "string") return x;
         if (x?.type === "image") return imageInfo(x).label;
-        return typeof x?.text === "string" && x.text ? x.text : jsonFull(x);
+        if (x?.type === "tool_reference" && typeof x.tool_name === "string") return `🔎 tool loaded: ${x.tool_name}`;
+        return typeof x?.text === "string" && x.text ? x.text : json(x);
       }
       // A result too large for the transcript: only a ~2 KB preview is here, the rest
       // was saved next to the session (<session>/tool-results/…).
@@ -1756,6 +1842,88 @@
           fmtDur(tur.totalDurationMs),
           num(tur.totalToolUseCount) && `${tur.totalToolUseCount} tools`,
         );
+      }
+
+      // ----- small cards and header facts (2026-10-26) -----
+      // An Edit/Write result carries the CLI's own diff: hunks of " "/"-"/"+" lines.
+      function patchView(tur) {
+        const hunks = tur && typeof tur === "object" && Array.isArray(tur.structuredPatch) ? tur.structuredPatch : [];
+        const lines = [];
+        let add = 0;
+        let del = 0;
+        for (const h of hunks) {
+          if (!h || typeof h !== "object" || !Array.isArray(h.lines)) continue;
+          const n = (v) => (num(v) ? v : "?");
+          lines.push({ t: "@", s: `@@ -${n(h.oldStart)},${n(h.oldLines)} +${n(h.newStart)},${n(h.newLines)} @@` });
+          for (const s of h.lines) {
+            if (typeof s !== "string") continue;
+            const t = s[0] === "+" || s[0] === "-" ? s[0] : " ";
+            if (t === "+") add++;
+            if (t === "-") del++;
+            lines.push({ t, s });
+          }
+        }
+        if (!lines.length) return null;
+        return { file: baseName(typeof tur.filePath === "string" ? tur.filePath : "") || null, add, del, lines };
+      }
+
+      // TaskCreate / TaskUpdate: "#id subject" and "#id → status · subject".
+      function taskHint(b, idx) {
+        const i = b?.input && typeof b.input === "object" ? b.input : {};
+        if (b?.name === "TaskCreate") {
+          const id = idx?.taskOf?.get(b.id);
+          const subject = typeof i.subject === "string" ? clip(i.subject, 80) : "";
+          return joinDot(id ? `#${id} ${subject}`.trim() : subject) || null;
+        }
+        if (b?.name === "TaskUpdate") {
+          const id = /^\w{1,40}$/.test(toStr(i.taskId)) ? toStr(i.taskId) : null;
+          if (!id) return null;
+          const status = typeof i.status === "string" ? ` → ${clip(i.status, 30)}` : "";
+          const subject = typeof i.subject === "string" ? i.subject : idx?.taskAt?.get(b.id);
+          return joinDot(`#${id}${status}`, subject && clip(subject, 80));
+        }
+        return null;
+      }
+
+      // `cd '<cwd>' && claude --resume <id>` — the human pastes it into a shell, so a
+      // crafted transcript must not be able to put a command into it.
+      function resumeCommand(rows) {
+        const main = rows.filter((r) => r?.type === "user" || r?.type === "assistant");
+        if (!main.length || main.every((r) => r.isSidechain === true)) return null;
+        const r = main.find((x) => typeof x.sessionId === "string" && typeof x.cwd === "string");
+        // Letters of any script, digits, and punctuation that bash, zsh, fish, cmd and PowerShell
+        // all leave alone inside '…' — no quote, $, `, &, |, ;, #, controls; "\" (Windows) only
+        // before something else, since fish reads \' as an escaped quote.
+        if (!r || !/^[A-Za-z0-9_-]{1,100}$/.test(r.sessionId)) return null;
+        if (!/^[\p{L}\p{N}\p{M} ._\-/\\~@+=,:]{1,1000}$/u.test(r.cwd) || r.cwd.endsWith("\\")) return null;
+        return `cd '${r.cwd.replace(/'/g, "'\\''")}' && claude --resume ${r.sessionId}`;
+      }
+
+      // Tokens of this transcript: one count per API message (streamed copies share
+      // message.id and repeat its usage); input includes cache writes and reads.
+      function sessionUsage(rows) {
+        const byId = new Map();
+        let anon = 0;
+        for (const r of rows) {
+          const u = r?.type === "assistant" ? r.message?.usage : null;
+          if (!u || typeof u !== "object") continue;
+          const n = (k) => (num(u[k]) ? u[k] : 0);
+          const v = {
+            input: n("input_tokens") + n("cache_creation_input_tokens") + n("cache_read_input_tokens"),
+            output: n("output_tokens"),
+          };
+          const id = typeof r.message.id === "string" ? r.message.id : `anon${anon++}`;
+          const prev = byId.get(id);
+          byId.set(id, prev ? { input: Math.max(prev.input, v.input), output: Math.max(prev.output, v.output) } : v);
+        }
+        if (!byId.size) return null;
+        let input = 0;
+        let output = 0;
+        for (const v of byId.values()) {
+          input += v.input;
+          output += v.output;
+        }
+        return { input, output };
       }
 
       // Background subagents (async_launched) report their totals in the finish
@@ -1998,8 +2166,33 @@
               const last = out[out.length - 1];
               if (last?.type === "images") last.blocks.push(b);
               else out.push({ type: "images", blocks: [b], meta: r.isMeta === true });
-            }
+            } else if (b != null && !(b?.type === "text" && typeof b.text === "string"))
+              out.push({ type: "unknown", block: b }); // a block this version doesn't know: show it
           }
+        // content that is neither text nor a list of blocks
+        if (c != null && typeof c !== "string" && !Array.isArray(c)) out.push({ type: "unknown", block: c });
+        return out;
+      }
+
+      // Blocks of an assistant record, in order. A broken block becomes "unknown" (shown
+      // as JSON) instead of failing the whole message; null is nothing to show.
+      function planAssistantRecord(r) {
+        const c = r?.message?.content;
+        if (typeof c === "string") return c.trim() ? [{ type: "text", text: c }] : [];
+        const out = [];
+        for (const b of arr(c)) {
+          if (b == null) continue;
+          if (b.type === "text" && typeof b.text === "string") {
+            if (b.text.trim()) out.push({ type: "text", text: b.text });
+          } else if (b.type === "thinking" && typeof b.thinking === "string") {
+            if (b.thinking.trim()) out.push({ type: "thinking", text: b.thinking });
+          } else if (b.type === "tool_use" && typeof b.name === "string") out.push({ type: "tool_use", block: b });
+          // the API switched to another model in the middle of the reply
+          else if (b.type === "fallback" && (b.from?.model || b.to?.model))
+            out.push({ type: "fallback", summary: `${toStr(b.from?.model) || "?"} → ${toStr(b.to?.model) || "?"}` });
+          else out.push({ type: "unknown", block: b });
+        }
+        if (c != null && typeof c !== "string" && !Array.isArray(c)) out.push({ type: "unknown", block: c });
         return out;
       }
 
@@ -2022,12 +2215,23 @@
         const stateSame = new Set();
         const statePrev = new Map();
         const lastState = new Map();
+        // task id → subject, and TaskCreate call id → task id: both from the call's result,
+        // which lies in another record than the call
+        const tasks = new Map();
+        const taskOf = new Map();
+        const taskAt = new Map(); // TaskUpdate call id → subject of that task number at that point
         for (const r of rows) {
           if (!r || typeof r !== "object") continue;
           if (r.parentUuid) parents.add(r.parentUuid);
+          const task = r.type === "user" ? r.toolUseResult?.task : null;
+          if (task && typeof task === "object" && /^\w{1,40}$/.test(toStr(task.id)) && typeof task.subject === "string") {
+            tasks.set(toStr(task.id), task.subject);
+            const res = arr(r.message?.content).filter((b) => b?.type === "tool_result");
+            if (res.length === 1) taskOf.set(res[0].tool_use_id, toStr(task.id));
+          }
           const track = typeof r.type === "string" && hasOwn(RECORD_RULES, r.type) ? RECORD_RULES[r.type].track : null;
           if (track) {
-            const val = String(track(r) ?? "");
+            const val = toStr(track(r));
             if (lastState.has(r.type)) {
               if (lastState.get(r.type) === val) stateSame.add(r);
               else statePrev.set(r, lastState.get(r.type));
@@ -2035,9 +2239,13 @@
             lastState.set(r.type, val);
           }
           if (r.type === "assistant")
-            for (const b of arr(r.message?.content))
+            for (const b of arr(r.message?.content)) {
               if (b?.type === "tool_use" && b.name === "AskUserQuestion" && b.id && askBody(b.input, null))
                 askCards.add(b.id);
+              // task numbers start over within a session: remember the subject current now
+              if (b?.type === "tool_use" && b.name === "TaskUpdate" && b.id && tasks.has(toStr(b.input?.taskId)))
+                taskAt.set(b.id, tasks.get(toStr(b.input?.taskId)));
+            }
           const tur = r.toolUseResult;
           if (r.type === "user" && tur && typeof tur === "object" && typeof tur.agentId === "string")
             if (typeof tur.description === "string") agentDesc.set(tur.agentId, tur.description);
@@ -2085,7 +2293,7 @@
           }
         }
         const queueShown = queueStatus(rows);
-        return { parents, askCards, ask, agentDesc, compactEchoes, stateSame, statePrev, queueShown };
+        return { parents, askCards, ask, agentDesc, compactEchoes, stateSame, statePrev, queueShown, tasks, taskOf, taskAt };
       }
 
       // Queue records → "sent" | "returned" for the one record of each queued message
@@ -2191,7 +2399,7 @@
           kind: (rule && v(rule.kind)) || (r?.type === "system" ? "system" : "ui"),
           who: (rule && v(rule.who)) || defaultWho,
           tag: icon ? `${icon} ${name}` : name,
-          summary: summary == null || summary === "" ? null : String(summary),
+          summary: summary == null || summary === "" ? null : toStr(summary),
           body,
           md: !!(rule && v(rule.md)),
           prose: !!(rule && v(rule.prose)) && typeof body === "string",
@@ -2202,7 +2410,8 @@
       }
       // ===== end rules =====
 
-      async function parseFile(f) {
+      // stale(): a newer load took the feed — stop reading (two big files would mean twice the memory).
+      async function parseFile(f, stale = () => false) {
         const tri = newTriage();
         const name = f.name.toLowerCase();
         if (name.endsWith(".json") && !name.endsWith(".jsonl")) {
@@ -2217,6 +2426,10 @@
         for (;;) {
           const { value, done } = await reader.read();
           if (done) break;
+          if (stale()) {
+            reader.cancel();
+            throw new Error("superseded");
+          }
           buf += value;
           let nl;
           while ((nl = buf.indexOf("\n")) >= 0) {
@@ -2235,6 +2448,7 @@
 
       function render(rows, fname, tri) {
         if (panel.open) panel.close(); // a new file (e.g. dropped over the modal) replaces the old
+        noticeHtml = null;
         chatEl.innerHTML = "";
         state = { rows, idx: 0, fname, tri };
         statsEl.title = "";
@@ -2251,17 +2465,50 @@
           fname,
           `${rows.length} ${L().records} (${L().service(nService)})`,
           `${nUser}→ / ←${nAsst}`,
-          `${fmtTime(firstTs)} → ${fmtTime(lastTs)}`,
         ];
+        if (firstTs) parts.push(`${fmtTime(firstTs)} → ${fmtTime(lastTs)}`);
         if (tri?.dups) parts.push(L().dups(tri.dups));
+        if (tri?.bad) parts.push(L().badLines(tri.bad));
         if (tri?.apiReq) parts.push(L().apiLog(tri.apiReq, (tri.apiBytes / 1048576).toFixed(1)));
         // Types the rule tables don't know yet — the early signal of a format change.
         if (newTypes.length) parts.push(L().newTypes(newTypes.length));
+        const usage = sessionUsage(rows);
+        if (usage) parts.push(L().tokens(fmtK(usage.input), fmtK(usage.output)));
         statsEl.textContent = parts.join(" · ");
         statsEl.title = newTypes.join("\n");
+        const resume = resumeCommand(rows);
+        resumeBtn.hidden = !resume;
+        resumeBtn.title = resume ? `${L().copyResume}:\n${resume}` : "";
+        state.resume = resume;
         state.index = index;
         renderChunk();
         applyFilters();
+      }
+
+      // Re-render the same file (language switch) without losing the reader's place:
+      // as many records as were loaded, the same blocks open, the same entry on top.
+      function rerender() {
+        const els = [...chatEl.querySelectorAll(".e")];
+        const top = els.findIndex((e) => e.getBoundingClientRect().bottom > 0);
+        const offset = top >= 0 ? els[top].getBoundingClientRect().top : 0;
+        const open = []; // [entry index, details index within the entry]
+        els.forEach((e, i) => e.querySelectorAll("details").forEach((d, j) => d.open && open.push([i, j])));
+        const upto = state.idx;
+        render(state.rows, state.fname, state.tri);
+        while (state.idx < upto) renderChunk();
+        const now = [...chatEl.querySelectorAll(".e")];
+        for (const [i, j] of open) {
+          const d = now[i]?.querySelectorAll("details")[j];
+          if (d) d.open = true;
+        }
+        // Off-screen entries get their real height only once laid out (content-visibility),
+        // so the anchor drifts for a couple of frames — correct it again after each.
+        const fix = () => now[top] && window.scrollBy(0, now[top].getBoundingClientRect().top - offset);
+        fix();
+        requestAnimationFrame(() => {
+          fix();
+          requestAnimationFrame(fix);
+        });
       }
 
       function renderChunk() {
@@ -2365,6 +2612,7 @@
         for (const it of plan) {
           if (it.type === "result") out.push(toolResultEntry(it.block, ts, tur));
           else if (it.type === "images") out.push(imagesEntry(it.blocks, it.meta, ts));
+          else if (it.type === "unknown") out.push(unknownEntry(it.block, ts));
           else out.push(...userTextEntries(it.text, it.spec, ts));
         }
         return out;
@@ -2378,17 +2626,11 @@
       }
 
       function assistantEntries(r, ts) {
-        const c = r.message?.content;
-        if (typeof c === "string") {
-          return c.trim() ? [proseEntry("assistant", "claude", ts, c)] : [];
-        }
-        if (!Array.isArray(c)) return [];
         const out = [];
-        for (const b of c) {
-          if (b.type === "text" && (b.text || "").trim()) {
-            out.push(proseEntry("assistant", "claude", ts, b.text));
-          } else if (b.type === "thinking" && (b.thinking || "").trim()) {
-            const th = b.thinking;
+        for (const it of planAssistantRecord(r)) {
+          if (it.type === "text") out.push(proseEntry("assistant", "claude", ts, it.text));
+          else if (it.type === "thinking") {
+            const th = it.text;
             out.push(
               entry(
                 "thinking",
@@ -2400,12 +2642,23 @@
                 th.length > MAX_SVC ? () => th : null,
               ),
             );
-          } else if (b.type === "tool_use") {
-            const spec = describeTool(b, state.index);
-            out.push(spec ? specEntry(spec, ts) : toolUseEntry(b, ts));
-          }
+          } else if (it.type === "tool_use") {
+            const spec = describeTool(it.block, state.index);
+            out.push(spec ? specEntry(spec, ts) : toolUseEntry(it.block, ts));
+          } else if (it.type === "fallback")
+            out.push(entry("system", "model", ts, "🔀 fallback", `<div class="line">${esc(it.summary)}</div>`, it.summary));
+          else out.push(unknownEntry(it.block, ts));
         }
         return out;
+      }
+
+      // A content block this version doesn't know — shown as JSON, never dropped.
+      function unknownEntry(b, ts) {
+        const cut = { hit: false };
+        const json = stringifyBounded(b, cut);
+        const type = typeof b?.type === "string" ? clip(b.type, 40) : typeof b;
+        const html = svcDetails("rule", `${L().chars(json.length)} · ${preview(json, 80)}`, json, "language-json");
+        return entry("ui", "unknown", ts, `? ${type}`, html, truncSvc(json), cut.hit || json.length > MAX_SVC ? () => jsonFull(b) : null);
       }
 
       // Per-entry raw text for Copy. WeakMap so entries are GC'd when removed from DOM.
@@ -2487,6 +2740,13 @@
         }, 1200);
       });
 
+      resumeBtn.addEventListener("click", async () => {
+        if (!state.resume || !(await copyToClipboard(state.resume))) return;
+        const prev = resumeBtn.textContent;
+        resumeBtn.textContent = "✓ " + L().copied;
+        setTimeout(() => (resumeBtn.textContent = prev), 1200);
+      });
+
       function proseEntry(kind, who, ts, text) {
         const shown = trunc(text);
         const full = text.length > MAX_PROSE ? () => text : null;
@@ -2557,15 +2817,17 @@
         const name = b.name || "tool";
         const cut = { hit: false };
         const inputStr = b.input ? stringifyBounded(b.input, cut) : "";
-        const hint =
-          b.input && typeof b.input === "object"
+        const task = taskHint(b, state.index);
+        const hint = task
+          ? task
+          : b.input && typeof b.input === "object"
             ? Object.entries(b.input)
                 .slice(0, 2)
                 .map(([k, v]) => {
                   // JSON.stringify(undefined) returns undefined, not a string
                   const s =
                     v === undefined ? "undefined" : typeof v === "string" ? v : JSON.stringify(v);
-                  return `${k}=${s.length > 40 ? s.slice(0, 40) + "…" : s}`;
+                  return `${k}=${s.length > 40 ? safeSlice(s, 40) + "…" : s}`;
                 })
                 .join(" · ")
             : "";
@@ -2638,6 +2900,8 @@
           full = () => jsonFull(raw);
         }
         const err = !!b.is_error;
+        const patch = err ? null : patchView(tur);
+        if (patch) return diffEntry(patch, text, ts, full, cut.hit);
         const lineCount = (text.match(/\n/g)?.length ?? 0) + 1;
         const images = arr(raw).filter((x) => x?.type === "image");
         const per = persistedInfo(text);
@@ -2657,6 +2921,24 @@
           truncSvc(text),
           cut.hit || text.length > MAX_SVC ? full : null,
         ), images);
+      }
+
+      // An Edit/Write result shown as the CLI's diff; Copy and ⤢ keep the result text.
+      function diffEntry(p, text, ts, full, cutHit) {
+        let used = 0;
+        const shown = [];
+        for (const l of p.lines) {
+          if (used > MAX_SVC) break;
+          const s = l.s.length > MAX_SVC - used ? safeSlice(l.s, Math.max(0, MAX_SVC - used)) + "…" : l.s;
+          used += l.s.length + 1;
+          shown.push({ t: l.t, s });
+        }
+        const cls = { "+": "d-add", "-": "d-del", "@": "d-hunk", " ": "" };
+        const body = shown.map((l) => `<span class="${cls[l.t]}">${esc(l.s)}</span>`).join("\n");
+        const more = shown.length < p.lines.length ? `\n… [+${L().lines(p.lines.length - shown.length)}]` : "";
+        const summary = esc(joinDot("📝 diff", p.file, `+${p.add} −${p.del}`)) + " · " + preview(text, 80);
+        const html = `<details class="svc tool-result"><summary>${summary}</summary><div class="content"><pre class="diff"><code>${body}${esc(more)}</code></pre></div></details>`;
+        return entry("tool-result", "result", ts, "result", html, truncSvc(text), cutHit || text.length > MAX_SVC ? full : null);
       }
 
       // summaryRaw is pre-built HTML; callers must escape untrusted pieces.
@@ -2679,7 +2961,7 @@
             (_, val) => {
               if (typeof val !== "string" || val.length <= MAX_SVC) return val;
               if (cut) cut.hit = true;
-              return val.slice(0, MAX_SVC) + "…";
+              return safeSlice(val, MAX_SVC) + "…";
             },
             2,
           );
@@ -2695,7 +2977,7 @@
         for (let i = 0; i < items.length; i++) {
           const x = items[i];
           if (x == null) continue;
-          const s = x.type === "image" ? imageInfo(x).label : typeof x === "string" ? x : x.text || stringifyBounded(x, cut);
+          const s = blockText(x, (v) => stringifyBounded(v, cut));
           parts.push(s);
           used += s.length + 1;
           if (used > MAX_SVC * 2) {
@@ -2772,7 +3054,7 @@
         const base = `${state.fname.replace(/\.jsonl?$/i, "") || "transcript"}-${panelState.who}`;
         const a = document.createElement("a");
         a.href = URL.createObjectURL(new Blob([panelText()], { type: "text/plain;charset=utf-8" }));
-        a.download = `${base.replace(/[^\w.-]+/g, "_")}.${ext}`;
+        a.download = `${base.replace(/[^\p{L}\p{M}\p{N}._-]+/gu, "_")}.${ext}`;
         a.click();
         setTimeout(() => URL.revokeObjectURL(a.href), 1000);
       });
@@ -2797,16 +3079,17 @@
       const canLoadDemo = /^https?:$/.test(window.location.protocol);
 
       async function loadDemo() {
-        showNotice(L().reading);
+        showNotice(() => L().reading);
+        const seq = loadSeq;
         try {
           const res = await fetch("demo.jsonl");
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const text = await res.text();
           const tri = newTriage();
           for (const ln of text.split("\n")) triageLine(tri, ln);
-          render(tri.rows, "demo.jsonl", tri);
+          if (seq === loadSeq) render(tri.rows, "demo.jsonl", tri);
         } catch (err) {
-          showNotice(`${L().errRead} ${esc(err.message)}`);
+          if (seq === loadSeq) showNotice(() => `${L().errRead} ${esc(err.message)}`);
         }
       }
 
@@ -2844,7 +3127,8 @@
         applyLocale();
         renderFilterLabels();
         renderPanelLabels();
-        if (state.fname) render(state.rows, state.fname, state.tri);
+        if (state.fname) rerender();
+        else if (noticeHtml) chatEl.querySelector(".empty").innerHTML = noticeHtml();
         else renderEmptyState();
       });
 
