@@ -128,6 +128,14 @@
         font-family: ui-monospace, "SF Mono", Menlo, monospace;
         font-size: 11px;
       }
+      #version {
+        font-size: 12px;
+        color: var(--muted);
+        text-decoration: none;
+      }
+      #version:hover {
+        text-decoration: underline;
+      }
       #stats {
         flex-basis: 100%;
         margin: 0;
@@ -585,6 +593,13 @@
         <option value="ar">العربية</option>
       </select>
       <button id="theme" title="Theme"></button>
+      <a
+        id="version"
+        href="https://github.com/hitmman55/claude-code-chat-viewer/releases"
+        target="_blank"
+        rel="noopener noreferrer nofollow"
+        title="Releases"
+      ></a>
       <div id="stats"></div>
     </header>
     <main id="chat"><div class="empty" id="emptyState"></div></main>
@@ -602,6 +617,10 @@
     </dialog>
 
     <script>
+      // Released version, shown in the header. Keep in step with CHANGELOG.md
+      // (test/version.test.mjs); build-single.mjs refuses a different release tag.
+      const VERSION = "0.1.2";
+
       // ===== i18n =====
       const FILTER_BASENAMES = {
         thinking: "thinking",
@@ -657,7 +676,7 @@
         },
         ru: {
           pick: "Выбери",
-          transcriptHint: "файл транскрипта, чтобы увидеть диалог.",
+          transcriptHint: "файл стенограммы, чтобы увидеть диалог.",
           dropHint: "или перетащи его сюда",
           dropFolderHint: "Папки пока не поддерживаются — перетащи один .jsonl файл.",
           usuallyAt: "Обычно лежит в",
@@ -924,6 +943,7 @@
       // ===== DOM refs =====
       const chatEl = document.getElementById("chat");
       const statsEl = document.getElementById("stats");
+      document.getElementById("version").textContent = `v${VERSION}`;
       const fileEl = document.getElementById("file");
       const emptyEl = document.getElementById("emptyState");
       const langSel = document.getElementById("lang");

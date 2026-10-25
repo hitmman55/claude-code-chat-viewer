@@ -18,6 +18,13 @@ fs.mkdirSync(outDir, { recursive: true });
 const html = fs.readFileSync(path.join(repoRoot, "index.html"), "utf8");
 const marked = fs.readFileSync(path.join(repoRoot, "lib/marked.min.js"), "utf8");
 
+// A release tag must name the version the page shows (const VERSION in index.html).
+const shown = html.match(/const VERSION = "([^"]+)";/)?.[1];
+if (/^v\d/.test(version) && version !== `v${shown}`) {
+  console.error(`error: tag ${version} but index.html shows v${shown} — update VERSION and CHANGELOG.md`);
+  process.exit(1);
+}
+
 const scriptTag = '<script src="lib/marked.min.js"></script>';
 if (!html.includes(scriptTag)) {
   console.error(`error: could not find ${scriptTag} in index.html`);

@@ -8,6 +8,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 Nothing yet.
 
+## [0.1.2] — 2026-10-26
+
+### Added
+
+- The version is shown in the header and links to the releases. A release tag that differs from it fails the build.
+
+### Changed
+
+- Russian UI and README: one word for a transcript, «стенограмма».
+
 ## [0.1.1] — 2026-10-25
 
 **Upgrade if you run Claude Code newer than 2.1.7x.** This release catches up with the transcript format up to 2.1.310 (v0.1.0 was written against 2.1.7x): command wrappers, skill injections and subagent reports no longer show up as your messages, `--resume` duplicates no longer inflate the stats, and one malformed record no longer stops the feed.
@@ -78,6 +88,7 @@ First public release.
 - GitHub Pages hosted live demo.
 - Single-file release build via CI — one HTML with marked.min.js inlined, available as a release asset.
 
-[Unreleased]: https://github.com/hitmman55/claude-code-chat-viewer/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/hitmman55/claude-code-chat-viewer/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/hitmman55/claude-code-chat-viewer/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/hitmman55/claude-code-chat-viewer/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/hitmman55/claude-code-chat-viewer/releases/tag/v0.1.0
