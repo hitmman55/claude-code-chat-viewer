@@ -499,6 +499,18 @@
       }
 
       /* Neutralized markdown image: no auto-fetch, just an inert label with URL */
+      .att-imgs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-block-start: 8px;
+      }
+      .att-imgs img {
+        max-width: 100%;
+        max-block-size: 70vh;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+      }
       .md-image {
         display: inline-block;
         color: var(--muted);
@@ -625,6 +637,8 @@
           close: "Close",
           mdTooBig: "Too large for markdown — use Text",
           newTypes: (n) => `? ${n} new record types`,
+          persisted: (size, name) => `💾 ${size} saved outside the transcript: ${name}`,
+          images: (n) => `${n} image${n === 1 ? "" : "s"}`,
           copy: "Copy",
           copied: "Copied!",
           tryExample: "Try with example",
@@ -666,6 +680,8 @@
           close: "Закрыть",
           mdTooBig: "Слишком большой для markdown — откройте «Текст»",
           newTypes: (n) => `? новых типов записей: ${n}`,
+          persisted: (size, name) => `💾 ${size} сохранено вне стенограммы: ${name}`,
+          images: (n) => `картинок: ${n}`,
           copy: "Скопировать",
           copied: "Скопировано!",
           tryExample: "Открыть пример",
@@ -707,6 +723,8 @@
           close: "Cerrar",
           mdTooBig: "Demasiado grande para markdown — usa Texto",
           newTypes: (n) => `? ${n} tipos de registro nuevos`,
+          persisted: (size, name) => `💾 ${size} guardado fuera de la transcripción: ${name}`,
+          images: (n) => `${n} ${n === 1 ? "imagen" : "imágenes"}`,
           copy: "Copiar",
           copied: "¡Copiado!",
           tryExample: "Probar con ejemplo",
@@ -749,6 +767,8 @@
           close: "Fermer",
           mdTooBig: "Trop volumineux pour le markdown — utilise Texte",
           newTypes: (n) => `? ${n} nouveaux types d'enregistrement`,
+          persisted: (size, name) => `💾 ${size} enregistré hors de la transcription : ${name}`,
+          images: (n) => `${n} image${n === 1 ? "" : "s"}`,
           copy: "Copier",
           copied: "Copié !",
           tryExample: "Essayer avec l'exemple",
@@ -790,6 +810,8 @@
           close: "关闭",
           mdTooBig: "内容过大，无法以 Markdown 显示 — 请用文本",
           newTypes: (n) => `? ${n} 种新记录类型`,
+          persisted: (size, name) => `💾 ${size} 已保存在记录之外：${name}`,
+          images: (n) => `${n} 张图片`,
           copy: "复制",
           copied: "已复制!",
           tryExample: "试用示例",
@@ -831,6 +853,8 @@
           close: "إغلاق",
           mdTooBig: "أكبر من أن يُعرض بـ Markdown — استخدم النص",
           newTypes: (n) => `? ${n} أنواع سجلات جديدة`,
+          persisted: (size, name) => `💾 ${size} محفوظ خارج السجل: ${name}`,
+          images: (n) => `${n} صور`,
           copy: "نسخ",
           copied: "تم النسخ!",
           tryExample: "جرّب مثالاً",
@@ -1194,6 +1218,15 @@
       // Keys of a plain object only — a string here would yield one key per character.
       const objKeys = (o) => (o && typeof o === "object" && !Array.isArray(o) ? Object.keys(o) : []);
 
+      // Untruncated JSON for the full-text panel; never throws (deep nesting → RangeError).
+      const jsonFull = (v) => {
+        try {
+          return JSON.stringify(v, null, 2);
+        } catch (err) {
+          return `[unserializable: ${err.message}]`;
+        }
+      };
+
       const REMINDER_WRAP = /^<system-reminder>\n?([\s\S]*?)\n?<\/system-reminder>$/;
       // rendered[] (CLI 2.1.268+): the text the model actually saw for this record.
       function renderedText(r) {
@@ -1324,7 +1357,7 @@
           kind: (a) => (a.commandMode === "prompt" ? "user" : "task-note"),
           who: (a) => (a.commandMode === "prompt" ? "user" : "task"),
           prose: (a) => a.commandMode === "prompt",
-          summary: (a) => clip(a.prompt, 90),
+          summary: (a) => (a.commandMode === "prompt" ? null : taskNoteSummary(a.prompt)) ?? clip(a.prompt, 90),
           body: (a) => (typeof a.prompt === "string" ? a.prompt : undefined),
           md: true,
         },
@@ -1630,6 +1663,70 @@
         return parts.join("\n\n");
       }
 
+      // ----- tool results and images (phase 5') -----
+      // Owner decision 2: base64 images are real <img>, the data: URI is built here from
+      // a checked source — never from markdown (markdown images stay inert).
+      const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
+      const MAX_IMAGE_B64 = 8_000_000;
+      const BASE64 = /^[A-Za-z0-9+/]*={0,2}$/;
+      function imageInfo(b) {
+        const s = b?.source && typeof b.source === "object" ? b.source : {};
+        const mt = typeof s.media_type === "string" ? s.media_type.toLowerCase() : "?";
+        const data = typeof s.data === "string" ? s.data : null;
+        const size = data ? `${Math.max(1, Math.round((data.length * 3) / 4 / 1024))} KB` : null;
+        const ok =
+          s.type === "base64" && IMAGE_TYPES.has(mt) && data !== null && data.length <= MAX_IMAGE_B64 && BASE64.test(data);
+        // The charset check above is what makes src safe inside an attribute.
+        return { ok, src: ok ? `data:${mt};base64,${data}` : null, label: `[image: ${joinDot(mt, size)}]` };
+      }
+      // Text of one tool_result content item — an image is its label, never base64.
+      function blockText(x) {
+        if (typeof x === "string") return x;
+        if (x?.type === "image") return imageInfo(x).label;
+        return typeof x?.text === "string" && x.text ? x.text : jsonFull(x);
+      }
+      // A result too large for the transcript: only a ~2 KB preview is here, the rest
+      // was saved next to the session (<session>/tool-results/…).
+      const PERSISTED = "<persisted-output>";
+      function persistedInfo(text) {
+        if (typeof text !== "string" || !text.startsWith(PERSISTED)) return null;
+        const head = text.slice(PERSISTED.length, PERSISTED.length + 2000);
+        const m = head.match(/^Output too large \(([^)\n]{1,40})\)\. Full output saved to: ([^\n]+)$/m);
+        return m ? { size: m[1], path: m[2].trim() } : { size: null, path: null };
+      }
+      const num = (n) => typeof n === "number" && isFinite(n);
+      function agentStats(tur) {
+        if (!tur || typeof tur !== "object" || typeof tur.agentId !== "string" || !num(tur.totalTokens)) return null;
+        return joinDot(
+          `🤖 ${fmtK(tur.totalTokens)} tokens`,
+          fmtDur(tur.totalDurationMs),
+          num(tur.totalToolUseCount) && `${tur.totalToolUseCount} tools`,
+        );
+      }
+
+      // Background subagents (async_launched) report their totals in the finish
+      // notification: <usage> as tags or "key: N" lines, subagent_ or total_tokens.
+      function taskNoteSummary(t) {
+        if (typeof t !== "string" || !t.trimStart().startsWith("<task-notification>")) return null;
+        const u = t.lastIndexOf("<usage>"); // the result before it may quote a <usage> of its own
+        const usage = u < 0 ? "" : t.slice(u, u + 1000);
+        const n = (k) => {
+          const m = usage.match(new RegExp(`${k}(?:>|: )(\\d{1,15})`));
+          return m ? Number(m[1]) : undefined;
+        };
+        const tokens = n("subagent_tokens") ?? n("total_tokens");
+        const status = tagText(t, "status");
+        return (
+          joinDot(
+            clip(tagText(t, "summary") ?? "", 100),
+            status && status !== "completed" && `⚠ ${clip(status, 20)}`,
+            tokens !== undefined && `🤖 ${fmtK(tokens)} tokens`,
+            fmtDur(n("duration_ms")),
+            n("tool_uses") !== undefined && `${n("tool_uses")} tools`,
+          ) || null
+        );
+      }
+
       // ----- user records: what the CLI writes as "user" but no human typed (phase 3') -----
       // Detection mirrors research/classify_jsonl.py, validated on the whole corpus.
       const INTERRUPTED = new Set([
@@ -1792,12 +1889,20 @@
             if (b?.type === "tool_result") {
               if (!idx?.askCards.has(b.tool_use_id)) out.push({ type: "result", block: b });
             } else if (b?.type === "text" && typeof b.text === "string" && b.text.trim()) text(b.text);
+            else if (b?.type === "image") {
+              // Consecutive images are one item: Read writes PDF pages as a meta record of images.
+              const last = out[out.length - 1];
+              if (last?.type === "images") last.blocks.push(b);
+              else out.push({ type: "images", blocks: [b], meta: r.isMeta === true });
+            }
           }
         return out;
       }
 
       const isHumanMessage = (r, idx) =>
-        planUserRecord(r, idx).some((x) => x.type === "text" && x.spec === null && x.text.trim() !== "");
+        planUserRecord(r, idx).some(
+          (x) => (x.type === "text" && x.spec === null && x.text.trim() !== "") || (x.type === "images" && !x.meta),
+        );
 
       // Cross-record facts, one pass per file: answers of AskUserQuestion calls, task
       // descriptions of subagents, and which "/compact" lines are only the echo of a
@@ -2138,8 +2243,12 @@
 
       function userEntries(r, ts) {
         const out = [];
-        for (const it of planUserRecord(r, state.index)) {
-          if (it.type === "result") out.push(toolResultEntry(it.block, ts));
+        const plan = planUserRecord(r, state.index);
+        // toolUseResult describes the record's tool call — trust it only when there is one.
+        const tur = plan.filter((it) => it.type === "result").length === 1 ? r.toolUseResult : null;
+        for (const it of plan) {
+          if (it.type === "result") out.push(toolResultEntry(it.block, ts, tur));
+          else if (it.type === "images") out.push(imagesEntry(it.blocks, it.meta, ts));
           else out.push(...userTextEntries(it.text, it.spec, ts));
         }
         return out;
@@ -2283,7 +2392,8 @@
       function taskNoteEntry(text, ts) {
         // <task-notification> blob from subagents — shown as service, with markdown inside
         const shown = truncSvc(text);
-        const html = svcDetails("task", preview(text, 90), text, null, true);
+        const s = taskNoteSummary(text);
+        const html = svcDetails("task", s ? esc(s) : preview(text, 90), text, null, true);
         return entry("task-note", "task", ts, "📣", html, shown, text.length > MAX_SVC ? () => text : null);
       }
 
@@ -2349,7 +2459,50 @@
         return entry("tool-use", name, ts, "tool", html, truncSvc(inputStr), full);
       }
 
-      function toolResultEntry(b, ts) {
+      // Images load only when their block is opened: a transcript can hold hundreds of
+      // ~200 KB screenshots, and Copy never sees the base64.
+      const lazyImages = new WeakMap(); // <details> → image blocks
+      chatEl.addEventListener(
+        "toggle",
+        (e) => {
+          const d = e.target;
+          if (!d.open || !lazyImages.has(d)) return;
+          const box = document.createElement("div");
+          box.className = "att-imgs";
+          for (const b of lazyImages.get(d)) {
+            const i = imageInfo(b);
+            if (i.ok) {
+              const im = document.createElement("img");
+              im.src = i.src;
+              im.alt = im.title = i.label;
+              im.decoding = "async";
+              box.append(im);
+            } else {
+              const sp = document.createElement("span");
+              sp.className = "md-image";
+              sp.textContent = "🖼️ " + i.label;
+              box.append(sp);
+            }
+          }
+          d.querySelector(".content")?.append(box);
+          lazyImages.delete(d);
+        },
+        true, // toggle does not bubble
+      );
+      function withImages(el, blocks) {
+        const d = blocks.length ? el.querySelector("details") : null;
+        if (d) lazyImages.set(d, blocks);
+        return el;
+      }
+
+      function imagesEntry(blocks, meta, ts) {
+        const labels = blocks.map((b) => imageInfo(b).label).join("\n");
+        const html = svcDetails("images", esc(L().images(blocks.length)), labels);
+        const el = entry(meta ? "meta" : "user", meta ? "inject" : "user", ts, "🖼 image", html, labels);
+        return withImages(el, blocks);
+      }
+
+      function toolResultEntry(b, ts, tur = null) {
         const raw = b.content ?? ""; // tool_result may lack content entirely
         let text = "";
         let full;
@@ -2362,7 +2515,7 @@
           full = () =>
             raw
               .filter((x) => x != null)
-              .map((x) => (typeof x === "string" ? x : x.text || jsonFull(x)))
+              .map(blockText)
               .join("\n");
         } else {
           text = stringifyBounded(raw, cut);
@@ -2370,9 +2523,19 @@
         }
         const err = !!b.is_error;
         const lineCount = (text.match(/\n/g)?.length ?? 0) + 1;
-        const summary = `${err ? "❌" : "📤"} result · ${L().lines(lineCount)} · ${L().chars(text.length)} · ${preview(text, 100)}`;
+        const images = arr(raw).filter((x) => x?.type === "image");
+        const per = persistedInfo(text);
+        const parts = [`${err ? "❌" : "📤"} result`, agentStats(tur)];
+        if (per) parts.push(L().persisted(per.size ?? "?", baseName(per.path) || "?"));
+        else parts.push(L().lines(lineCount), L().chars(text.length));
+        if (images.length) parts.push(`🖼 ${L().images(images.length)}`);
+        // the persisted preview follows its header; summarize the output, not the header
+        const gap = per ? text.indexOf("\n\n") : -1;
+        const pv = gap < 0 ? text : text.slice(gap + 2).replace(/^Preview[^\n]*\n/, "");
+        parts.push(preview(pv, 100));
+        const summary = esc(joinDot(...parts.slice(0, -1))) + " · " + parts[parts.length - 1];
         const html = svcDetails(err ? "tool-result-err" : "tool-result", summary, text);
-        return entry(
+        return withImages(entry(
           "tool-result" + (err ? " error" : ""),
           "result",
           ts,
@@ -2380,7 +2543,7 @@
           html,
           truncSvc(text),
           cut.hit || text.length > MAX_SVC ? full : null,
-        );
+        ), images);
       }
 
       // summaryRaw is pre-built HTML; callers must escape untrusted pieces.
@@ -2412,13 +2575,6 @@
           return `[unserializable: ${err.message}]`;
         }
       }
-      const jsonFull = (v) => {
-        try {
-          return JSON.stringify(v, null, 2);
-        } catch (err) {
-          return `[unserializable: ${err.message}]`;
-        }
-      };
 
       function joinBounded(items, cut = null) {
         const parts = [];
@@ -2426,7 +2582,7 @@
         for (let i = 0; i < items.length; i++) {
           const x = items[i];
           if (x == null) continue;
-          const s = typeof x === "string" ? x : x.text || stringifyBounded(x, cut);
+          const s = x.type === "image" ? imageInfo(x).label : typeof x === "string" ? x : x.text || stringifyBounded(x, cut);
           parts.push(s);
           used += s.length + 1;
           if (used > MAX_SVC * 2) {
