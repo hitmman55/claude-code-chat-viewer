@@ -1692,7 +1692,12 @@
         if (typeof text !== "string" || !text.startsWith(PERSISTED)) return null;
         const head = text.slice(PERSISTED.length, PERSISTED.length + 2000);
         const m = head.match(/^Output too large \(([^)\n]{1,40})\)\. Full output saved to: ([^\n]+)$/m);
-        return m ? { size: m[1], path: m[2].trim() } : { size: null, path: null };
+        // the output itself: after the header and the "Preview (first 2KB):" line
+        const gap = text.indexOf("\n\n");
+        const preview = (m && gap >= 0 ? text.slice(gap + 2).replace(/^Preview[^\n]*\n/, "") : text.slice(PERSISTED.length))
+          .replace(/(\n\.\.\.)?\n?<\/persisted-output>\s*$/, "")
+          .trim();
+        return m ? { size: m[1], path: m[2].trim(), preview } : { size: null, path: null, preview };
       }
       const num = (n) => typeof n === "number" && isFinite(n);
       function agentStats(tur) {
@@ -2529,10 +2534,7 @@
         if (per) parts.push(L().persisted(per.size ?? "?", baseName(per.path) || "?"));
         else parts.push(L().lines(lineCount), L().chars(text.length));
         if (images.length) parts.push(`🖼 ${L().images(images.length)}`);
-        // the persisted preview follows its header; summarize the output, not the header
-        const gap = per ? text.indexOf("\n\n") : -1;
-        const pv = gap < 0 ? text : text.slice(gap + 2).replace(/^Preview[^\n]*\n/, "");
-        parts.push(preview(pv, 100));
+        parts.push(preview(per ? per.preview : text, 100)); // summarize the output, not its header
         const summary = esc(joinDot(...parts.slice(0, -1))) + " · " + parts[parts.length - 1];
         const html = svcDetails(err ? "tool-result-err" : "tool-result", summary, text);
         return withImages(entry(

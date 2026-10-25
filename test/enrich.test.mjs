@@ -74,10 +74,19 @@ test("an image a human pasted (not meta) counts as their message", () => {
 test("persisted output: size and path of the full file are read from the header", () => {
   const text =
     "<persisted-output>\nOutput too large (52.4KB). Full output saved to: /home/u/.claude/projects/p/s/tool-results/toolu_01.txt\n\nPreview (first 2KB):\n> hello";
-  assert.deepEqual(T.persistedInfo(text), { size: "52.4KB", path: "/home/u/.claude/projects/p/s/tool-results/toolu_01.txt" });
+  assert.deepEqual(T.persistedInfo(text), {
+    size: "52.4KB",
+    path: "/home/u/.claude/projects/p/s/tool-results/toolu_01.txt",
+    preview: "> hello",
+  });
   assert.equal(T.persistedInfo("plain output"), null);
   assert.equal(T.persistedInfo("see <persisted-output> later"), null);
-  assert.deepEqual(T.persistedInfo("<persisted-output>\nsomething new"), { size: null, path: null });
+  assert.deepEqual(T.persistedInfo("<persisted-output>\nsomething new"), { size: null, path: null, preview: "something new" });
+});
+
+test("persisted preview drops the closing tag and the CLI's trailing ellipsis line", () => {
+  const text = "<persisted-output>\nOutput too large (3KB). Full output saved to: /x/b1.txt\n\nPreview (first 2KB):\ndemo@1.0.0\n...\n</persisted-output>";
+  assert.equal(T.persistedInfo(text).preview, "demo@1.0.0");
 });
 
 test("persisted header parsing is linear on hostile input", () => {
