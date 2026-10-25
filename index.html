@@ -929,6 +929,14 @@
         const url = href ? ` <span class="md-image-url">${esc(unesc(href))}</span>` : "";
         return `<span class="md-image">🖼️ ${alt}${url}</span>`;
       };
+      // Code is escaped by marked as well (block code in the renderer, inline code in the
+      // tokenizer) — undo our layer(s) first so "&&" doesn't show as "&amp;&amp;".
+      mdRenderer.code = function (code, infostring) {
+        return marked.Renderer.prototype.code.call(this, unesc(code), infostring, false);
+      };
+      mdRenderer.codespan = function (text) {
+        return `<code>${esc(unesc(unesc(text)))}</code>`;
+      };
       mdRenderer.link = function (href, title, text) {
         // Only http(s) links are clickable; other schemes (javascript:, data:, file:, mailto:)
         // are rendered as plain text. `text` is already escaped/rendered by marked.
@@ -1113,8 +1121,9 @@
           }
           const t = r?.type;
           if (t === "user") {
-            // Same classifier as the feed: wrappers, markers and echoes are not messages.
-            if (!r.toolUseResult && isHumanMessage(r, idx)) nUser++;
+            // Same plan as the feed: wrappers, markers and echoes are not messages; a reply
+            // typed while a tool ran sits next to its tool_result and is one.
+            if (isHumanMessage(r, idx)) nUser++;
           } else if (t === "assistant") {
             if (r.isApiErrorMessage) continue;
             const id = r.message?.id || r.uuid;
@@ -1586,19 +1595,17 @@
         if (!qs.length) return null;
         const answers = res?.answers && typeof res.answers === "object" ? res.answers : {};
         const notes = res?.annotations && typeof res.annotations === "object" ? res.annotations : {};
-        return qs
-          .map((q) => {
-            const a = hasOwn(answers, q.question)
-              ? String(answers[q.question])
-              : !res
-                ? "—"
-                : res.isError
-                  ? `⛔ ${clip(res.text, 200)}`
-                  : clip(res.text, 300);
-            const n = hasOwn(notes, q.question) ? notes[q.question]?.notes : null;
-            return `**${q.question}**\n\n→ ${a}` + (typeof n === "string" && n ? `\n\n> ${n}` : "");
-          })
-          .join("\n\n");
+        const structured = qs.some((q) => hasOwn(answers, q.question));
+        const parts = qs.map((q) => {
+          if (!structured) return `**${q.question}**`;
+          const a = hasOwn(answers, q.question) ? String(answers[q.question]) : "—";
+          const n = hasOwn(notes, q.question) ? notes[q.question]?.notes : null;
+          return `**${q.question}**\n\n→ ${a}` + (typeof n === "string" && n ? `\n\n> ${n}` : "");
+        });
+        // No structured answers (older CLI, or "clarify"/decline, which arrives as an
+        // error): the human's words are somewhere in the result text — show all of it once.
+        if (!structured) parts.push(res ? `→ ${res.isError ? "⛔ " : ""}${res.text}` : "→ —");
+        return parts.join("\n\n");
       }
 
       // ----- user records: what the CLI writes as "user" but no human typed (phase 3') -----
@@ -1611,6 +1618,35 @@
       const CONTINUE_MARKER = "Continue from where you left off.";
       const AGENT_MSG_PREFIX = "Another Claude session sent a message:";
       const LEAD_TAG = /^<([a-z][a-z0-9-]{2,40})>/i;
+      // Tags the CLI wraps machine text in. A record is a wrapper only when nothing but
+      // closed wrapper blocks is left — text after them was typed by a human.
+      const WRAPPER_TAGS = new Set([
+        "task-notification",
+        "local-command-caveat",
+        "command-name",
+        "command-message",
+        "command-args",
+        "local-command-stdout",
+        "local-command-stderr",
+        "bash-input",
+        "bash-stdout",
+        "bash-stderr",
+        "system-reminder",
+        "fork-boilerplate",
+        "skill-format",
+      ]);
+      function afterWrappers(t) {
+        let rest = t.trim();
+        for (let n = 0; n < 50; n++) {
+          const tag = rest.match(LEAD_TAG)?.[1];
+          if (!tag || !WRAPPER_TAGS.has(tag.toLowerCase())) return rest;
+          const close = `</${tag}>`;
+          const end = rest.indexOf(close);
+          if (end < 0) return rest;
+          rest = rest.slice(end + close.length).trim();
+        }
+        return rest;
+      }
       const ANSI = /\u001b\[[0-9;]*[A-Za-z]/g;
       const commandSpec = (t) => ({
         kind: "system",
@@ -1699,7 +1735,13 @@
           return { kind: "meta", who: "inject", tag: "▶ continue", summary: "resume continuation", body: null };
         if (meta && t.startsWith(AGENT_MSG_PREFIX)) return reportSpec(t, idx);
         const tag = t.match(LEAD_TAG)?.[1]?.toLowerCase();
-        if (tag && hasOwn(USER_TAG_RULES, tag)) return USER_TAG_RULES[tag](t);
+        if (tag && hasOwn(USER_TAG_RULES, tag)) {
+          // A task notification's tail ("Full transcript available at …") is machine text
+          // too, but the CLI always closes the tag — an unclosed one was typed by a human.
+          const live = tag === "task-notification" ? tagText(t, tag) === undefined : !!afterWrappers(t);
+          if (live) return meta ? { legacy: "meta" } : null;
+          return USER_TAG_RULES[tag](t);
+        }
         return meta ? { legacy: "meta" } : null;
       }
 
@@ -1712,10 +1754,28 @@
           .join("\n");
       }
 
-      const isHumanMessage = (r, idx) => {
-        const text = userTextOf(r);
-        return text.trim() !== "" && describeUser(r, text, idx) === null;
-      };
+      // How a user record appears in the feed; the user count reads the same plan.
+      // Items: { type: "result", block } | { type: "text", text, spec } — spec null means
+      // typed by a human. An answered AskUserQuestion result is folded into its card.
+      function planUserRecord(r, idx = null) {
+        const c = r?.message?.content;
+        const out = [];
+        const text = (t) => {
+          const spec = describeUser(r, t, idx);
+          if (!spec?.hide) out.push({ type: "text", text: t, spec });
+        };
+        if (typeof c === "string") text(c);
+        else
+          for (const b of arr(c)) {
+            if (b?.type === "tool_result") {
+              if (!idx?.askCards.has(b.tool_use_id)) out.push({ type: "result", block: b });
+            } else if (b?.type === "text" && typeof b.text === "string" && b.text.trim()) text(b.text);
+          }
+        return out;
+      }
+
+      const isHumanMessage = (r, idx) =>
+        planUserRecord(r, idx).some((x) => x.type === "text" && x.spec === null && x.text.trim() !== "");
 
       // Cross-record facts, one pass per file: answers of AskUserQuestion calls, task
       // descriptions of subagents, and which "/compact" lines are only the echo of a
@@ -1752,9 +1812,21 @@
             ask.set(b.tool_use_id, { text, isError: b.is_error === true, answers: tur.answers, annotations: tur.annotations });
           }
           if (!r.uuid || parents.has(r.uuid) || !/^\/compact(\s|$)/.test(userTextOf(r).trim())) continue;
-          for (let j = i + 1; j < Math.min(rows.length, i + 16); j++) {
+          // Look ahead over records with a uuid only: CLI 2.1.303 writes a batch of state
+          // records (no uuid) in between. Hide the echo only when the command record that
+          // carries the same args follows, so nothing the human typed disappears.
+          let seen = 0;
+          let boundary = false;
+          let command = false;
+          for (let j = i + 1; j < rows.length && seen < 15; j++) {
             const x = rows[j];
-            if (x?.type === "system" && x.subtype === "compact_boundary" && x.compactMetadata?.trigger === "manual") {
+            if (!x?.uuid) continue;
+            seen++;
+            if (x.type === "system" && x.subtype === "compact_boundary" && x.compactMetadata?.trigger === "manual")
+              boundary = true;
+            else if (x.type === "user" && userTextOf(x).trim().startsWith("<command-name>/compact</command-name>"))
+              command = true;
+            if (boundary && command) {
               compactEchoes.add(r.uuid);
               break;
             }
@@ -1971,26 +2043,16 @@
       }
 
       function userEntries(r, ts) {
-        const c = r.message?.content;
-        const idx = state.index;
-        if (typeof c === "string") return userTextEntries(r, c, ts, idx);
-        if (!Array.isArray(c)) return [];
         const out = [];
-        for (const b of c) {
-          if (b.type === "tool_result") {
-            // an AskUserQuestion answer is already shown inside its question card
-            if (!idx?.askCards.has(b.tool_use_id)) out.push(toolResultEntry(b, ts));
-          } else if (b.type === "text" && (b.text || "").trim()) {
-            out.push(...userTextEntries(r, b.text, ts, idx));
-          }
+        for (const it of planUserRecord(r, state.index)) {
+          if (it.type === "result") out.push(toolResultEntry(it.block, ts));
+          else out.push(...userTextEntries(it.text, it.spec, ts));
         }
         return out;
       }
 
-      function userTextEntries(r, text, ts, idx) {
-        const s = describeUser(r, text, idx);
+      function userTextEntries(text, s, ts) {
         if (!s) return [proseEntry("user", "user", ts, text)];
-        if (s.hide) return [];
         if (s.legacy === "meta") return [metaEntry(text, ts, L().systemInject)];
         if (s.legacy === "task") return [taskNoteEntry(text, ts)];
         return [specEntry(s, ts)];

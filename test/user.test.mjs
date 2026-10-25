@@ -16,7 +16,7 @@ const section = (name) => {
 const T = new Function(
   section("triage") +
     section("rules") +
-    "\nreturn { describeUser, describeTool, buildIndex, computeStats };",
+    "\nreturn { describeUser, describeTool, buildIndex, computeStats, planUserRecord };",
 )();
 
 const EMPTY = T.buildIndex([]);
@@ -37,7 +37,8 @@ test("an unknown leading tag stays a human message", () => {
 });
 
 test("task notifications keep the existing task-note rendering", () => {
-  assert.equal(d(user("<task-notification>\n<task-id>x</task-id>")).legacy, "task");
+  // real notifications are always closed (1331 of 1331 in the corpus)
+  assert.equal(d(user("<task-notification>\n<task-id>x</task-id>\n</task-notification>")).legacy, "task");
 });
 
 test("slash command record becomes a system line with name and args", () => {
@@ -74,11 +75,15 @@ test("! shell input is a tool call, its output a tool result; stderr marks an er
   assert.match(bad.body, /fatal: not a repo/);
 });
 
-test("system-reminder typed into a user record is collapsible meta, never hidden", () => {
-  const s = d(user("<system-reminder>\nnote\n</system-reminder>\nи мой текст"));
+test("a bare system-reminder in a user record is collapsible meta, never hidden", () => {
+  const s = d(user("<system-reminder>\nnote\n</system-reminder>"));
   assert.equal(s.kind, "meta");
   assert.ok(!s.hide);
-  assert.match(s.body, /и мой текст/);
+  assert.match(s.body, /note/);
+});
+
+test("system-reminder followed by live text: the whole record is the human's message", () => {
+  assert.equal(d(user("<system-reminder>\nnote\n</system-reminder>\nи мой текст")), null);
 });
 
 test("interruption markers: only the exact whole text", () => {
@@ -93,16 +98,17 @@ test("interruption markers: only the exact whole text", () => {
 test("compact echo is hidden only when it is a leaf followed by a manual compact", () => {
   const echo = user("/compact не сохраняй ничего", { uuid: "e" });
   const boundary = { type: "system", subtype: "compact_boundary", uuid: "b", compactMetadata: { trigger: "manual" } };
-  const idx = T.buildIndex([echo, boundary]);
+  const cmd = user("<command-name>/compact</command-name>\n<command-args>не сохраняй ничего</command-args>", { uuid: "cmd" });
+  const idx = T.buildIndex([echo, boundary, cmd]);
   assert.equal(d(echo, idx).hide, true);
   // somebody answered it → it was a real message
   const child = { type: "assistant", uuid: "c", parentUuid: "e", message: { content: "ok" } };
-  assert.equal(d(echo, T.buildIndex([echo, child, boundary])), null);
+  assert.equal(d(echo, T.buildIndex([echo, child, boundary, cmd])), null);
   // no compaction follows
   assert.equal(d(echo, T.buildIndex([echo])), null);
   // automatic compaction is not caused by typing
   const auto = { ...boundary, compactMetadata: { trigger: "auto" } };
-  assert.equal(d(echo, T.buildIndex([echo, auto])), null);
+  assert.equal(d(echo, T.buildIndex([echo, auto, cmd])), null);
   // " /exit" style typos are not echoes
   assert.equal(d(user("/compactify"), idx), null);
 });
@@ -211,4 +217,177 @@ test("user count agrees with the feed: the /compact quartet and wrappers are not
     askResult,
   ];
   assert.equal(T.computeStats(rows).nUser, 3);
+});
+
+// --- challenger review of 93fe3da: mutants that survived and live-data mismatches ---
+
+const plan = (r, rows = [r]) => T.planUserRecord(r, T.buildIndex(rows));
+const humanTexts = (items) => items.filter((x) => x.type === "text" && x.spec === null).map((x) => x.text);
+
+test("a reply typed while a tool ran (text block next to tool_result) is a message and is counted", () => {
+  const r = {
+    type: "user",
+    uuid: "u",
+    toolUseResult: { stdout: "" },
+    message: {
+      content: [
+        { type: "tool_result", tool_use_id: "t", content: "ok" },
+        { type: "text", text: "но local json пока не трогай" },
+      ],
+    },
+  };
+  assert.deepEqual(humanTexts(plan(r)), ["но local json пока не трогай"]);
+  assert.equal(T.computeStats([r]).nUser, 1);
+});
+
+test("system-reminder block followed by a live block: the live block is the message", () => {
+  const r = user([
+    { type: "text", text: "<system-reminder>\nnote\n</system-reminder>" },
+    { type: "text", text: "посмотри это" },
+  ]);
+  assert.deepEqual(humanTexts(plan(r)), ["посмотри это"]);
+  assert.equal(T.computeStats([r]).nUser, 1);
+});
+
+test("live text after a wrapper tag is a human message, never swallowed", () => {
+  for (const t of [
+    "<bash-stdout>x</bash-stdout> что это значит?",
+    "<system-reminder>a</system-reminder> посмотри",
+    "<local-command-stdout>Bye!</local-command-stdout> почему?",
+    "<command-name>/x</command-name> а теперь вопрос",
+    "<fork-boilerplate>boilerplate</fork-boilerplate>\nYour directive: сделай задачу 3",
+  ])
+    assert.equal(d(user(t)), null, t);
+  // machine tails stay machine
+  assert.equal(d(user("<task-notification>x</task-notification>\nFull transcript available at: /tmp/x")).legacy, "task");
+  assert.equal(
+    d(user("<command-message>superpowers:x</command-message>\n<command-name>/superpowers:x</command-name>\n<skill-format>true</skill-format>")).kind,
+    "system",
+  );
+  assert.equal(d(user("<fork-boilerplate>only boilerplate</fork-boilerplate>")).legacy, "meta");
+});
+
+test("a non-meta text that merely starts like a subagent report stays a human message", () => {
+  assert.equal(d(user('Another Claude session sent a message:\n<agent-message from="x">hi</agent-message>')), null);
+});
+
+test("structured answers are shown in full, even past the raw text's clip point", () => {
+  const qs = ["Первый вопрос?", "Второй вопрос?", "Третий вопрос?"];
+  const long = "очень длинный ответ ".repeat(30) + "КОНЕЦ-ОТВЕТА";
+  const use = {
+    type: "assistant",
+    uuid: "q",
+    message: { content: [{ type: "tool_use", id: "k", name: "AskUserQuestion", input: { questions: qs.map((q) => ({ question: q })) } }] },
+  };
+  const res = {
+    type: "user",
+    uuid: "a",
+    toolUseResult: { answers: { [qs[0]]: "A", [qs[1]]: "B", [qs[2]]: long }, annotations: { [qs[1]]: { notes: "моя заметка" } } },
+    message: { content: [{ type: "tool_result", tool_use_id: "k", content: "x".repeat(400) }] },
+  };
+  const body = T.describeTool(use.message.content[0], T.buildIndex([use, res])).body;
+  assert.match(body, /КОНЕЦ-ОТВЕТА/);
+  assert.match(body, /моя заметка/);
+});
+
+test("a declined / clarify answer without structured answers keeps the human's full text, once", () => {
+  const use = {
+    type: "assistant",
+    uuid: "q",
+    message: {
+      content: [
+        { type: "tool_use", id: "k", name: "AskUserQuestion", input: { questions: [{ question: "Q1?" }, { question: "Q2?" }] } },
+      ],
+    },
+  };
+  const text = "The user doesn't want to proceed with this tool use. " + "служебно ".repeat(40) + "ОТВЕТ-ЧЕЛОВЕКА";
+  const res = { type: "user", uuid: "a", message: { content: [{ type: "tool_result", tool_use_id: "k", is_error: true, content: text }] } };
+  const body = T.describeTool(use.message.content[0], T.buildIndex([use, res])).body;
+  assert.equal(body.split("ОТВЕТ-ЧЕЛОВЕКА").length - 1, 1);
+  assert.match(body, /⛔/);
+});
+
+test("AskUserQuestion with invalid input keeps its (error) result visible", () => {
+  const use = {
+    type: "assistant",
+    uuid: "q",
+    message: { content: [{ type: "tool_use", id: "k", name: "AskUserQuestion", input: { questions: "not an array" } }] },
+  };
+  const res = { type: "user", uuid: "a", message: { content: [{ type: "tool_result", tool_use_id: "k", is_error: true, content: "InputValidationError" }] } };
+  const items = T.planUserRecord(res, T.buildIndex([use, res]));
+  assert.equal(items.filter((x) => x.type === "result").length, 1);
+});
+
+test("the answered AskUserQuestion result is folded into the card", () => {
+  const items = T.planUserRecord(askResult, T.buildIndex([askUse, askResult]));
+  assert.equal(items.length, 0);
+});
+
+const compactCase = (gap, { withCommand = true, uuidless = 0 } = {}) => {
+  const echo = user("/compact Сохранить: план", { uuid: "e" });
+  const filler = Array.from({ length: gap }, (_, i) => ({ type: "attachment", uuid: `f${i}`, attachment: { type: "date" } }));
+  const noUuid = Array.from({ length: uuidless }, () => ({ type: "permission-mode", permissionMode: "auto" }));
+  const tail = [
+    { type: "system", subtype: "compact_boundary", uuid: "b", compactMetadata: { trigger: "manual" } },
+    ...(withCommand ? [user("<command-name>/compact</command-name>\n<command-args>Сохранить: план</command-args>", { uuid: "c" })] : []),
+  ];
+  const rows = [echo, ...noUuid, ...filler, ...tail];
+  return d(echo, T.buildIndex(rows));
+};
+
+test("compact echo: records without uuid don't count towards the look-ahead window", () => {
+  assert.equal(compactCase(0, { uuidless: 18 })?.hide, true);
+});
+
+test("compact echo: boundary and command inside 15 uuid records hide it, further away they don't", () => {
+  assert.equal(compactCase(13)?.hide, true);
+  assert.equal(compactCase(20), null);
+});
+
+test("compact echo is hidden only when the command record that carries its args follows", () => {
+  assert.equal(compactCase(0, { withCommand: false }), null);
+});
+
+test("compact echo: the command record as the 16th uuid record is out of the window", () => {
+  assert.equal(compactCase(14), null);
+});
+
+test("an empty or blank user record is not a message", () => {
+  assert.equal(T.computeStats([user("   ")]).nUser, 0);
+  assert.equal(T.computeStats([user([{ type: "text", text: "" }])]).nUser, 0);
+});
+
+test("a hidden compact echo leaves nothing in the record's plan", () => {
+  const echo = user("/compact x", { uuid: "e" });
+  const rows = [
+    echo,
+    { type: "system", subtype: "compact_boundary", uuid: "b", compactMetadata: { trigger: "manual" } },
+    user("<command-name>/compact</command-name>", { uuid: "c" }),
+  ];
+  assert.deepEqual(T.planUserRecord(echo, T.buildIndex(rows)), []);
+  // …and "/compactify" in the same position is a message
+  const typo = user("/compactify", { uuid: "e" });
+  assert.equal(humanTexts(T.planUserRecord(typo, T.buildIndex([typo, ...rows.slice(1)]))).length, 1);
+});
+
+test("skill name survives a trailing slash in the base directory", () => {
+  const s = d(user("Base directory for this skill: /x/skills/brainstorming/\n\n# B", { isMeta: true, sourceToolUseID: "t" }));
+  assert.equal(s.summary, "brainstorming");
+});
+
+test("interruption marker padded with whitespace is still a marker", () => {
+  assert.match(d(user("\n[Request interrupted by user]\n")).tag, /interrupted/);
+});
+
+test("a wrapper tag in the middle of a human message does not make it machine text", () => {
+  assert.equal(d(user("посмотри, что пишет <task-notification> в логе")), null);
+});
+
+test("subagent report without indentation keeps its whole inner text", () => {
+  const s = d(user('Another Claude session sent a message:\n<agent-message from="z">\nплоский отчёт\n</agent-message>', { isMeta: true }));
+  assert.equal(s.body, "плоский отчёт");
+});
+
+test("an unclosed <task-notification> typed by a human is a message (real ones are always closed)", () => {
+  assert.equal(d(user("<task-notification> вставил кусок лога, разберись")), null);
 });
