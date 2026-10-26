@@ -6,17 +6,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.1.3] — 2026-10-26
+
+**Search arrives.** Find words or a phrase in the open session and step through the hits; tool calls can fold into one line per run; Edit/Write results read as diffs. Also a round of robustness fixes found by auditing the viewer against the mistakes of similar tools — one odd field or block no longer breaks the file, nothing the viewer hides goes uncounted.
+
 ### Added
 
+- **Search in the session** — `/`, words or `"a phrase"`, Enter / Shift+Enter (outside the box also `n` / `N`), Esc clears, "only mine"; a hit beyond the loaded chunks is drawn on the way.
 - **Diffs** — the result of an `Edit` / `Write` is shown as a colored diff, from the patch Claude Code stores with it (`+N −M` in the header).
-- **Task cards** — `TaskCreate` / `TaskUpdate` read as `#7 → completed · subject`, the subject taken from where the task was created.
+- **Task cards** — `TaskCreate` / `TaskUpdate` read as `#7 → completed · subject`, the subject taken from the latest creation of a task with that number.
 - **Resume command** — `📋 claude --resume` next to the stats line copies `cd '<project dir>' && claude --resume <session id>`; hidden for subagent transcripts and for paths or ids a shell could misread.
 - **Token totals** in the stats line — each API message counted once.
 - `already_read_file` attachments (a file read again, unchanged) get a one-line summary instead of `? new record type`.
-- **Model fallback** inside a reply (`claude-fable-5 → claude-opus-4-8`) is shown as a system line; before, it was dropped.
+- **Model fallback** inside a reply (`claude-fable-5 → claude-opus-4-8`) is shown as a system line (System / meta filter); before, it was dropped.
 - A tool reference in a result (after `ToolSearch`) reads `🔎 tool loaded: WebFetch` instead of raw JSON.
 - The stats line counts broken lines, and `? N new record types` also lists content blocks this version doesn't know (`content:<type>`).
-- **Search in the session** — `/`, words or `"a phrase"`, Enter / Shift+Enter or `n` / `N`, "only mine"; a hit beyond the loaded chunks is drawn on the way.
 - **Tool runs** — with the Tools filter off, each run of tool calls between messages is one line: count and the tools used.
 - **`hidden N`** in the stats line — records hidden on purpose (repeats of a value, delivered queue items, empty reminders) are counted, with the kinds on hover.
 - README: "How it differs", and how to read transcripts when Claude Code runs on a server (mounted drive or copy).
@@ -26,7 +32,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Switching the UI language no longer throws away the records loaded with "Load more", the opened blocks and the scroll position.
 - A file that finishes reading after a newer one was opened no longer replaces it; the older read is stopped.
 - One field the browser can't turn into text (`{"toString": 1}` is valid JSON) no longer stops the whole file with "Read error".
-- A broken block in a Claude reply no longer turns the whole reply into an error card; blocks of an unknown type, and user content of an unexpected shape, are shown as JSON instead of vanishing.
+- A broken block in a Claude reply no longer turns the whole reply into an error card; blocks of an unknown type, and user content of an unexpected shape, are shown as JSON (UI state filter) instead of vanishing.
 - Cutting a long text no longer splits an emoji in half.
 - "Save file" keeps non-Latin letters in the file name (it used to turn `сессия.jsonl` into `_.txt`).
 - Notices such as "Reading…" follow a language switch.
@@ -118,7 +124,8 @@ First public release.
 - GitHub Pages hosted live demo.
 - Single-file release build via CI — one HTML with marked.min.js inlined, available as a release asset.
 
-[Unreleased]: https://github.com/hitmman55/claude-code-chat-viewer/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/hitmman55/claude-code-chat-viewer/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/hitmman55/claude-code-chat-viewer/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/hitmman55/claude-code-chat-viewer/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/hitmman55/claude-code-chat-viewer/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/hitmman55/claude-code-chat-viewer/releases/tag/v0.1.0

@@ -16,7 +16,7 @@
 
 # Claude Code Chat Viewer
 
-Read your Claude Code conversation history in a browser. Claude Code saves every session as a JSONL file under `~/.claude/projects/`; open one here and it becomes a readable feed — your messages, Claude's replies, thinking, tool calls and results, subagent reports — with filters and a reader mode. One HTML file, no server, no install, works offline; nothing leaves your machine. Reads the transcript format up to Claude Code 2.1.310.
+Read your Claude Code conversation history in a browser. Claude Code saves every session as a JSONL file under `~/.claude/projects/`; open one here and it becomes a readable feed — your messages, Claude's replies, thinking, tool calls and results, subagent reports — with search, filters and a reader mode. One HTML file, no server, no install, works offline; nothing leaves your machine. Reads the transcript format up to Claude Code 2.1.310.
 
 <p align="center">
   <img src="https://img.shields.io/badge/license-Unlicense-blue" alt="License: Unlicense" />
@@ -38,7 +38,7 @@ This viewer turns such a `.jsonl` into a readable feed with color-coded roles, c
 ## How it differs
 
 - **Nothing to install, nothing listening.** One HTML file: no server, no open port, no automatic network requests.
-- **Reads the format in depth.** Subagent reports, compactions, queued messages, declined tool calls, images and the records Claude Code adds with each version — each is labelled for what it is, and a record type it doesn't know yet is shown and flagged, never dropped.
+- **Reads the format in depth.** Subagent reports, compactions, queued messages, declined tool calls, images and the records Claude Code adds with each version — each is labelled for what it is, and a record type it doesn't know yet stays in the feed (under the UI state filter) and is flagged in the stats line, never dropped.
 - **Honest about who said what.** Command wrappers, hook output and machine notifications are not counted or shown as your messages.
 - **Not only Latin script.** Six UI languages, RTL for Arabic; the feed shows any language as written.
 
@@ -97,13 +97,13 @@ Often Claude Code works on a remote Linux machine while you read on a Mac or a W
 ### Reading comfort
 
 - **Reader mode** — a header toggle that keeps only what people and Claude said: your messages (including `/compact` with its arguments), Claude's text replies, question → answer cards, subagent reports and compaction dividers. No thinking, no tool calls, no service records. Good for skimming or sharing a clean view.
-- **Search in the session** — the box in the header (`/` jumps to it): words in any order, `"a phrase"` in quotes, any script; Enter / Shift+Enter (or `n` / `N`) go from one found record to the next, drawing the feed up to it if it isn't loaded yet. "only mine" searches only your messages. Only entries the filters show are found; tool results are searched in their first 10 000 characters.
+- **Search in the session** — the box in the header (`/` jumps to it): words in any order, `"a phrase"` in quotes, any script; Enter / Shift+Enter go from one hit to the next — or `n` / `N` with the cursor outside the box — drawing the feed up to it if it isn't loaded yet; Esc clears the search. "only mine" searches only your messages. Only what the filters show is found, and a block as far as the feed shows it: 20 000 characters of a message, 5 000 of a service block such as a tool result.
 - **Tool runs** — turn the Tools filter off and each run of tool calls between two messages leaves one line: `🔧 6 · Read ×3 · Bash ×2 · Grep`. Tools on — every call; reader mode — none.
 - **Copy per message** — `📋` button in each entry header. Copies the entry's text to the clipboard, with a checkmark confirmation for 1.2 s. Uses `navigator.clipboard.writeText` with a `document.execCommand` fallback for `file://` contexts.
-- **Honest stats line** — human messages and model replies are counted by the same rules as the feed (tool output, command wrappers and notifications are not your messages); duplicates after `--resume` are merged; API request logs are skipped (CLI 2.1.300+). Token totals of the transcript: `tokens ↑in ↓out`, each API message counted once (input includes cache reads and writes; subagents keep their own transcripts). Broken lines are counted, and so are records hidden on purpose — `hidden N`, hover for the kinds (repeats of a title or mode, delivered queue items, empty reminders). `? N new record types` flags record types and content blocks this version doesn't know yet — hover for the list; those records are still shown, as JSON.
+- **Honest stats line** — human messages and model replies are counted by the same rules as the feed (tool output, command wrappers and notifications are not your messages); duplicates after `--resume` are merged; API request logs are skipped (CLI 2.1.300+). Token totals of the transcript: `tokens ↑in ↓out`, each API message counted once (input includes cache reads and writes; subagents keep their own transcripts). Broken lines are counted, and so are records hidden on purpose — `hidden N`, hover for the kinds (repeats of a value such as the title, delivered queue items, empty reminders, the echo of `/compact`, service records with nothing to read). `? N new record types` flags record types and content blocks this version doesn't know yet — hover for the list; those records are still in the feed, as JSON, under the UI state filter.
 - **Resume command** — `📋 claude --resume` next to the stats line copies `cd '<project dir>' && claude --resume <session id>`, ready to paste. Not shown for a subagent transcript, nor when the path or id holds characters a shell could misread.
 - **Diffs** — the result of an `Edit` or `Write` shows the change as a colored diff, taken from the patch Claude Code stores with the result, with `+N −M` in its header.
-- **Task cards** — `TaskCreate` / `TaskUpdate` read as `#7 → completed · subject`; the subject is taken from the task's creation, wherever it is in the file.
+- **Task cards** — `TaskCreate` / `TaskUpdate` read as `#7 → completed · subject`; the subject is taken from the latest creation of a task with that number (numbers start over within a session).
 - **Friendly tool names** — known tools are labelled with icons (e.g. `📖 Read file`, `🖥️ Shell`, `📝 Edit file`). Unknown / MCP tools fall back to `🔧 {raw_name}`.
 - **Auto theme** — the viewer follows your system's `prefers-color-scheme` by default. Click the sun/moon button to pin a choice; pinned choice persists across sessions.
 - **Six UI languages** — English, Русский, Español, Français, 中文, العربية. Arabic switches to RTL. Picker in the header, preference saved. Switching keeps your place: the records already loaded, the blocks you opened, the entry at the top of the screen.

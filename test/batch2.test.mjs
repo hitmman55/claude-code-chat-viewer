@@ -55,7 +55,7 @@ test("search terms: words in any order, a quoted phrase as one term, any script"
 
 test("search parts are the blocks the feed shows, with their kind and its bounds", () => {
   const idx = T.buildIndex([]);
-  assert.deepEqual(T.rowSearchParts({ type: "user", message: { content: "Привет мир" } }, idx), [{ kind: "user", text: "Привет мир" }]);
+  assert.deepEqual(T.rowSearchParts({ type: "user", message: { content: "Привет мир" } }, idx), [{ kind: "user", text: "Привет мир", human: true }]);
   const a = { type: "assistant", message: { content: [{ type: "text", text: "TERMA" }, { type: "thinking", thinking: "думаю" }, { type: "tool_use", name: "Bash", input: { command: "dir C:\\Users\\bob" } }] } };
   const parts = T.rowSearchParts(a, idx);
   assert.deepEqual(parts.map((p) => p.kind), ["assistant", "thinking", "tool-use"]);
@@ -95,4 +95,14 @@ test("the echo of a manual /compact is counted as hidden", () => {
     { type: "user", uuid: "d", message: { content: "<command-name>/compact</command-name><command-args>keep it</command-args>" } },
   ];
   assert.equal(T.computeStats(rows).hidden["/compact echo"], 1);
+});
+
+test("only-mine parts are the human's: not the parent's task, not a command", () => {
+  const idx = T.buildIndex([]);
+  const human = (r) => T.rowSearchParts(r, idx).filter((p) => p.human).length;
+  assert.equal(human({ type: "user", uuid: "u", message: { content: "my words" } }), 1);
+  assert.equal(human({ type: "user", uuid: "s", isSidechain: true, parentUuid: null, message: { content: "Research X. Read only." } }), 0);
+  assert.equal(human({ type: "user", uuid: "c", message: { content: "<command-name>/rename</command-name><command-args>x</command-args>" } }), 0);
+  const said = "The user doesn't want to proceed with this tool use. The tool use was rejected. To tell you how to proceed, the user said:\nno";
+  assert.equal(human({ type: "user", uuid: "d", message: { content: [{ type: "tool_result", tool_use_id: "t", content: said, is_error: true }] } }), 1);
 });

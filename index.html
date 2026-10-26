@@ -7,16 +7,16 @@
     <title>Claude Code Chat Viewer</title>
     <meta
       name="description"
-      content="Browse Claude Code conversation history offline: one HTML file that reads JSONL session transcripts from ~/.claude/projects. Six UI languages, no server, no install."
+      content="Browse and search Claude Code conversation history offline: one HTML file that reads JSONL session transcripts from ~/.claude/projects. Six UI languages, no server, no install."
     />
     <meta
       name="keywords"
-      content="claude code, claude code history, conversation history, session transcript, jsonl viewer, transcript viewer, anthropic, offline, single file html"
+      content="claude code, claude code history, search claude code history, conversation history, session transcript, jsonl viewer, transcript viewer, anthropic, offline, single file html"
     />
     <meta property="og:title" content="Claude Code Chat Viewer" />
     <meta
       property="og:description"
-      content="Browse Claude Code conversation history offline: one HTML file that reads JSONL session transcripts from ~/.claude/projects."
+      content="Browse and search Claude Code conversation history offline: one HTML file that reads JSONL session transcripts from ~/.claude/projects."
     />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary" />
@@ -679,7 +679,7 @@
     <script>
       // Released version, shown in the header. Keep in step with CHANGELOG.md
       // (test/version.test.mjs); build-single.mjs refuses a different release tag.
-      const VERSION = "0.1.2";
+      const VERSION = "0.1.3";
 
       // ===== i18n =====
       const FILTER_BASENAMES = {
@@ -726,7 +726,7 @@
           copied: "Copied!",
           tryExample: "Try with example",
           hidden: (n) => `hidden ${n}`,
-          hiddenTitle: "Hidden on purpose — repeats of a value, delivered queue items, empty reminders:",
+          hiddenTitle: "Hidden on purpose — repeats of a value, delivered queue items, empty reminders, the echo of /compact, service records with nothing to read:",
           searchPlaceholder: "Search — Enter / Shift+Enter, press / to focus",
           searchMine: "only mine",
           searchAt: (k, n) => `${k} of ${n}`,
@@ -780,7 +780,7 @@
           copied: "Скопировано!",
           tryExample: "Открыть пример",
           hidden: (n) => `скрыто ${n}`,
-          hiddenTitle: "Скрыто намеренно — повторы значения, доставленные из очереди, пустые напоминания:",
+          hiddenTitle: "Скрыто намеренно — повторы значения, доставленные из очереди, пустые напоминания, эхо /compact, служебные записи, в которых нечего читать:",
           searchPlaceholder: "Поиск — Enter / Shift+Enter, «/» — перейти сюда",
           searchMine: "только мои",
           searchAt: (k, n) => `${k} из ${n}`,
@@ -834,7 +834,7 @@
           copied: "¡Copiado!",
           tryExample: "Probar con ejemplo",
           hidden: (n) => `ocultos ${n}`,
-          hiddenTitle: "Ocultos a propósito — repeticiones de un valor, elementos de la cola ya entregados, recordatorios vacíos:",
+          hiddenTitle: "Ocultos a propósito — repeticiones de un valor, elementos de la cola ya entregados, recordatorios vacíos, el eco de /compact, registros de servicio sin nada que leer:",
           searchPlaceholder: "Buscar — Enter / Mayús+Enter, «/» para enfocar",
           searchMine: "solo míos",
           searchAt: (k, n) => `${k} de ${n}`,
@@ -889,7 +889,7 @@
           copied: "Copié !",
           tryExample: "Essayer avec l'exemple",
           hidden: (n) => `masqués ${n}`,
-          hiddenTitle: "Masqués exprès — répétitions d’une valeur, éléments de file déjà livrés, rappels vides :",
+          hiddenTitle: "Masqués exprès — répétitions d’une valeur, éléments de file déjà livrés, rappels vides, l’écho de /compact, enregistrements de service sans rien à lire :",
           searchPlaceholder: "Rechercher — Entrée / Maj+Entrée, « / » pour y aller",
           searchMine: "seulement les miens",
           searchAt: (k, n) => `${k} sur ${n}`,
@@ -943,7 +943,7 @@
           copied: "已复制!",
           tryExample: "试用示例",
           hidden: (n) => `已隐藏 ${n}`,
-          hiddenTitle: "有意隐藏——重复的值、已送达的队列项、空提醒：",
+          hiddenTitle: "有意隐藏——重复的值、已送达的队列项、空提醒、/compact 的回显、没有可读内容的服务记录：",
           searchPlaceholder: "搜索 — Enter / Shift+Enter，按 “/” 聚焦",
           searchMine: "只看我的",
           searchAt: (k, n) => `第 ${k} / ${n}`,
@@ -997,7 +997,7 @@
           copied: "تم النسخ!",
           tryExample: "جرّب مثالاً",
           hidden: (n) => `مخفية ${n}`,
-          hiddenTitle: "مخفية عمدًا — تكرار القيمة، عناصر الطابور المسلَّمة، التذكيرات الفارغة:",
+          hiddenTitle: "مخفية عمدًا — تكرار القيمة، عناصر الطابور المسلَّمة، التذكيرات الفارغة، صدى ‎/compact‎، سجلات الخدمة التي لا شيء فيها للقراءة:",
           searchPlaceholder: "بحث — Enter / Shift+Enter، و«/» للانتقال إليه",
           searchMine: "رسائلي فقط",
           searchAt: (k, n) => `${k} من ${n}`,
@@ -2112,11 +2112,20 @@
       // as the entry shows it. One block = one possible hit.
       function rowSearchParts(r, idx) {
         const out = [];
-        const add = (kind, text, max) => {
+        // human: the human wrote it ("only mine") — not the parent's task, not a command
+        const add = (kind, text, max, human = false) => {
           const t = toStr(text);
-          if (t) out.push({ kind, text: t.length > max ? safeSlice(t, max) : t });
+          if (t) out.push({ kind, text: t.length > max ? safeSlice(t, max) : t, human });
         };
-        const spec = (s) => s && !s.hide && add(s.kind + (s.divider ? " divider" : ""), joinDot(s.summary, typeof s.body === "string" ? s.body : s.body?.json != null ? toStr(s.body.json) : null), s.prose ? MAX_PROSE : MAX_SVC);
+        const spec = (s) =>
+          s &&
+          !s.hide &&
+          add(
+            s.kind + (s.divider ? " divider" : ""),
+            joinDot(s.summary, typeof s.body === "string" ? s.body : s.body?.json != null ? toStr(s.body.json) : null),
+            s.prose ? MAX_PROSE : MAX_SVC,
+            s.who === "user" && s.kind === "user" && !!s.prose,
+          );
         if (r?.type === "user") {
           const plan = planUserRecord(r, idx);
           const tur = plan.filter((it) => it.type === "result").length === 1 ? r.toolUseResult : null;
@@ -2129,9 +2138,9 @@
               const kind = "tool-result" + (b.is_error ? " error" : "");
               if (p) add(kind, `${p.lines.map((l) => l.s).join("\n").slice(0, MAX_SVC)}\n${safeSlice(text, 100)}`, MAX_SVC + 101);
               else add(kind, text, MAX_SVC);
-            } else if (it.type === "images") add(it.meta ? "meta" : "user", it.blocks.map((b) => imageInfo(b).label).join("\n"), MAX_SVC);
+            } else if (it.type === "images") add(it.meta ? "meta" : "user", it.blocks.map((b) => imageInfo(b).label).join("\n"), MAX_SVC, !it.meta);
             else if (it.type === "unknown") add("ui", toStr(it.block), MAX_SVC);
-            else if (!it.spec) add("user", it.text, MAX_PROSE);
+            else if (!it.spec) add("user", it.text, MAX_PROSE, true);
             else if (it.spec.legacy === "meta") add("meta", it.text, MAX_SVC);
             else if (it.spec.legacy === "task") add("task-note", it.text, MAX_SVC);
             else spec(it.spec);
@@ -3404,7 +3413,7 @@
             } catch {} // a record the feed can't describe is an error card, not a hit
             let k = 0;
             for (const p of parts) {
-              if (!kindVisible(p.kind, f) || (mine && p.kind !== "user")) continue;
+              if (!kindVisible(p.kind, f) || (mine && !p.human)) continue;
               if (textMatches(p.text, terms)) hits.push({ row: i, k: k++ });
             }
           }
